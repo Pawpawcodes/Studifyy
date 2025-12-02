@@ -11,10 +11,10 @@ import {
 } from "../types";
 
 // ------------------------------------------------------------------
-// 🔥 INIT GEMINI (TEXT + IMAGES)
+// 🔥 INIT GEMINI FOR TEXT MODELS
 // ------------------------------------------------------------------
 const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
-if (!geminiKey) throw new Error("Missing Gemini API key (VITE_GEMINI_API_KEY)");
+if (!geminiKey) throw new Error("❌ Missing VITE_GEMINI_API_KEY");
 
 const genAI = new GoogleGenerativeAI(geminiKey);
 
@@ -23,19 +23,19 @@ const MODEL_FAST = "gemini-1.5-flash-latest";
 const MODEL_REASONING = "gemini-1.5-pro-latest";
 
 // ------------------------------------------------------------------
-// 🔥 INIT OPENAI (REAL TTS AUDIO)
+// 🔥 INIT OPENAI FOR REAL TTS AUDIO
 // ------------------------------------------------------------------
 const openaiKey = import.meta.env.VITE_OPENAI_API_KEY;
-if (!openaiKey) {
-  console.warn("⚠ No OpenAI key found. TTS will not work.");
+
+let openai: OpenAI | null = null;
+if (openaiKey) {
+  openai = new OpenAI({ apiKey: openaiKey });
+} else {
+  console.warn("⚠ OPENAI TTS is disabled (no key provided)");
 }
 
-const openai = openaiKey
-  ? new OpenAI({ apiKey: openaiKey })
-  : null;
-
 // ------------------------------------------------------------------
-// 🔧 Prepare file uploads for Gemini
+// 🔧 PREPARE FILES FOR GEMINI
 // ------------------------------------------------------------------
 function prepareFiles(files: UploadedFile[]) {
   return (files || [])
@@ -49,28 +49,31 @@ function prepareFiles(files: UploadedFile[]) {
 }
 
 // ------------------------------------------------------------------
-// 📘 EXPLAIN TOPIC
+// 🤖 ORCHESTRATOR (MAIN CHAT BOT)
 // ------------------------------------------------------------------
-export async function explainTopic(
-  topic: string,
-  user: UserProfile,
-  files: UploadedFile[]
+export async function orchestrateRequest(
+  query: string,
+  userProfile: UserProfile | null,
+  files: UploadedFile[],
+  history: string
 ): Promise<AgentResponse> {
   const prompt = `
-Explain the topic "${topic}" for a student.
+You are Studify AI, a friendly helpful learning assistant.
+Student profile:
+${JSON.stringify(userProfile ?? {}, null, 2)}
 
-Student:
-${JSON.stringify(user, null, 2)}
+Conversation History:
+${history}
 
-Provide:
-• Easy explanation  
-• Step-by-step breakdown  
-• Mini example  
-• Summary bullets  
+User query:
+"${query}"
+
+Give a clear helpful reply.
 `;
 
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_REASONING });
+
     const result = await model.generateContent([
       ...prepareFiles(files),
       { text: prompt },
@@ -81,31 +84,33 @@ Provide:
       sources: [],
     };
   } catch (err: any) {
-    console.error("ExplainTopic ERROR:", err);
+    console.error("orchestrateRequest ERROR:", err);
     return {
-      text:
-        "Error explaining topic:\n\n" +
-        (err.message || JSON.stringify(err)),
+      text: "Error while responding. Try again.",
       sources: [],
     };
   }
 }
 
 // ------------------------------------------------------------------
-// ❓ DOUBT SOLVER
+// 📘 EXPLAIN TOPIC
 // ------------------------------------------------------------------
-export async function solveDoubt(
-  question: string,
+export async function explainTopic(
+  topic: string,
+  user: UserProfile,
   files: UploadedFile[]
 ): Promise<AgentResponse> {
   const prompt = `
-Solve this doubt: "${question}"
+Explain "${topic}" simply.
 
-Return:
-1. What the doubt means  
-2. Step-by-step answer  
-3. Common mistakes  
-4. Final summary  
+Student:
+${JSON.stringify(user, null, 2)}
+
+Output:
+- Simple explanation  
+- Step-by-step  
+- Example  
+- Summary  
 `;
 
   try {
@@ -113,18 +118,40 @@ Return:
       .getGenerativeModel({ model: MODEL_REASONING })
       .generateContent([...prepareFiles(files), { text: prompt }]);
 
-    return {
-      text: result.response.text(),
-      sources: [],
-    };
+    return { text: result.response.text(), sources: [] };
   } catch (err: any) {
-    console.error("solveDoubt ERROR:", err);
     return {
-      text:
-        "Error solving doubt:\n\n" +
-        (err.message || JSON.stringify(err)),
+      text: "Error explaining topic:\n" + err.message,
       sources: [],
     };
+  }
+}
+
+// ------------------------------------------------------------------
+// ❓ SOLVE DOUBT
+// ------------------------------------------------------------------
+export async function solveDoubt(
+  question: string,
+  files: UploadedFile[]
+): Promise<AgentResponse> {
+  const prompt = `
+Solve the student's doubt: "${question}"
+
+Explain:
+- What the doubt means  
+- Step-by-step solution  
+- Common mistakes  
+- Summary  
+`;
+
+  try {
+    const result = await genAI
+      .getGenerativeModel({ model: MODEL_REASONING })
+      .generateContent([...prepareFiles(files), { text: prompt }]);
+
+    return { text: result.response.text(), sources: [] };
+  } catch (err: any) {
+    return { text: "Error solving doubt:\n" + err.message, sources: [] };
   }
 }
 
@@ -136,24 +163,24 @@ export async function generateQuiz(
   difficulty: string
 ): Promise<QuizQuestion[]> {
   const prompt = `
-Create a JSON quiz about "${topic}" (${difficulty} difficulty).
+Generate a quiz about "${topic}" (${difficulty}) in JSON only:
 
-Format:
 [
   {
     "id": "1",
     "question": "...",
-    "options": ["A", "B", "C", "D"],
+    "options": ["A","B","C","D"],
     "correctIndex": 0,
     "explanation": "..."
   }
 ]
-RETURN ONLY THE JSON.
+RETURN ONLY JSON.
 `;
 
   try {
-    const model = genAI.getGenerativeModel({ model: MODEL_FAST });
-    const result = await model.generateContent(prompt);
+    const result = await genAI
+      .getGenerativeModel({ model: MODEL_FAST })
+      .generateContent(prompt);
 
     return JSON.parse(result.response.text());
   } catch (err) {
@@ -170,7 +197,7 @@ export async function generateFlashcards(
   count = 5
 ): Promise<Flashcard[]> {
   const prompt = `
-Generate ${count} flashcards for "${topic}" as JSON:
+Generate ${count} flashcards for "${topic}" in JSON:
 
 [
   { "front": "...", "back": "...", "topic": "${topic}" }
@@ -198,7 +225,7 @@ RETURN ONLY JSON.
 }
 
 // ------------------------------------------------------------------
-// 🗓️ STUDY PLAN
+// 🗓 STUDY PLAN
 // ------------------------------------------------------------------
 export async function generateStudyPlan(
   user: UserProfile,
@@ -214,9 +241,8 @@ Focus: ${focus}
 
 Return JSON:
 [
-  { "day": "Day 1", "focusTopic": "...", "tasks": ["..."] }
+  { "day":"Day 1", "focusTopic":"...", "tasks":["..."] }
 ]
-ONLY JSON.
 `;
 
   try {
@@ -226,100 +252,40 @@ ONLY JSON.
 
     return JSON.parse(result.response.text());
   } catch (err) {
-    console.error("StudyPlan ERROR:", err);
     return [];
   }
 }
 
 // ------------------------------------------------------------------
-// 🔊 REAL TTS (OpenAI)
+// 🔊 REAL TTS USING OPENAI
 // ------------------------------------------------------------------
 export async function generateTTS(text: string) {
   if (!openai) {
-    console.warn("⚠ No OpenAI API key. TTS disabled.");
-    return {
-      text,
-      transcript: text,
-      audio_mime: "audio/wav",
-      blob: null,
-      url: null,
-    };
+    console.warn("⚠ TTS disabled — No OpenAI key found.");
+    return { text, transcript: text, blob: null, url: null };
   }
 
   try {
-    console.log("🔊 Generating TTS via OpenAI…");
-
     const response = await openai.audio.speech.create({
       model: "gpt-4o-mini-tts",
       voice: "alloy",
       input: text,
-      format: "wav"
+      format: "wav",
     });
 
-    const arrayBuffer = await response.arrayBuffer();
-    const wavBlob = new Blob([arrayBuffer], { type: "audio/wav" });
-    const url = URL.createObjectURL(wavBlob);
+    const buffer = await response.arrayBuffer();
+    const blob = new Blob([buffer], { type: "audio/wav" });
+    const url = URL.createObjectURL(blob);
 
     return {
       text,
       transcript: text,
+      blob,
+      url,
       audio_mime: "audio/wav",
-      blob: wavBlob,
-      url
     };
-
   } catch (err: any) {
     console.error("TTS ERROR:", err);
-    return {
-      text,
-      transcript: text,
-      audio_mime: "error",
-      blob: null,
-      url: null,
-    };
-  }
-}
-// ------------------------------------------------------------------
-// 🤖 ORCHESTRATOR (Chat Assistant)
-// Combines: history + user + files → Gemini response
-// ------------------------------------------------------------------
-export async function orchestrateRequest(
-  query: string,
-  userProfile: UserProfile | null,
-  files: UploadedFile[],
-  history: string
-): Promise<AgentResponse> {
-  
-  const prompt = `
-You are Studify AI, a friendly, helpful learning assistant.
-Student profile:
-${JSON.stringify(userProfile ?? {}, null, 2)}
-
-Conversation so far:
-${history}
-
-User says: "${query}"
-
-Reply clearly and helpful.
-`;
-
-  try {
-    const model = genAI.getGenerativeModel({ model: MODEL_REASONING });
-
-    const result = await model.generateContent([
-      ...prepareFiles(files),
-      { text: prompt }
-    ]);
-
-    return {
-      text: result.response.text(),
-      sources: []
-    };
-  } catch (err: any) {
-    console.error("orchestrateRequest ERROR:", err);
-    return {
-      text: "Error answering your question. Try again.",
-      sources: []
-    };
+    return { text, transcript: text, blob: null, url: null };
   }
 }

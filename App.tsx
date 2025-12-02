@@ -42,14 +42,14 @@ const AppRoutes: React.FC = () => {
   const { onboardingComplete } = useStore();
   const { session } = useAuth();
 
-  // If authenticated but onboarding not complete, force onboarding
+  // Force onboarding if logged in but onboarding incomplete
   if (session && !onboardingComplete) {
     return <Onboarding />;
   }
 
   return (
     <Routes>
-      {/* Auth */}
+      {/* Auth callbacks */}
       <Route path="/login" element={<Login />} />
       <Route path="/auth/v1/callback" element={<Login />} />
 
@@ -70,6 +70,7 @@ const AppRoutes: React.FC = () => {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/explain"
         element={
@@ -80,6 +81,7 @@ const AppRoutes: React.FC = () => {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/quiz"
         element={
@@ -90,6 +92,7 @@ const AppRoutes: React.FC = () => {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/flashcards"
         element={
@@ -100,6 +103,7 @@ const AppRoutes: React.FC = () => {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/doubt"
         element={
@@ -110,6 +114,7 @@ const AppRoutes: React.FC = () => {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/plan"
         element={
@@ -120,6 +125,7 @@ const AppRoutes: React.FC = () => {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/uploads"
         element={
@@ -130,6 +136,7 @@ const AppRoutes: React.FC = () => {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/settings"
         element={
@@ -144,7 +151,7 @@ const AppRoutes: React.FC = () => {
       {/* Hidden Test Route */}
       <Route path="/test" element={<TestSuite />} />
 
-      {/* Default Catch-all */}
+      {/* Catch-all */}
       <Route
         path="*"
         element={<Navigate to={session ? '/' : '/landing'} replace />}
@@ -158,11 +165,8 @@ const App: React.FC = () => {
     <AuthProvider>
       <StoreProvider>
         <AudioProvider>
-          {/* Top bar always visible */}
           <AuthBar />
-          {/* Routes below */}
           <AppRoutes />
-          {/* Floating chat widget */}
           <ChatWidget />
         </AudioProvider>
       </StoreProvider>

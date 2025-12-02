@@ -1,4 +1,4 @@
-import { GoogleGenAI, Schema, Type, Part, Modality } from "@google/genai";
+import { GoogleGenerativeAI, Schema, Type, Modality, Part } from "@google/generative-ai";
 import {
   UserProfile,
   UploadedFile,
@@ -10,351 +10,226 @@ import {
   TTSResponse,
 } from "../types";
 
-// -----------------------------
+// ------------------------------------------------------------------
 // 🔥 INITIALIZE GEMINI CLIENT
-// -----------------------------
+// ------------------------------------------------------------------
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
 if (!apiKey) {
-  // Fail fast in dev; in production this will also show in console
-  throw new Error("❌ Missing VITE_GEMINI_API_KEY in environment.");
+  throw new Error("❌ Missing VITE_GEMINI_API_KEY (set it in .env.local + Netlify)");
 }
 
-const ai = new GoogleGenAI({ apiKey });
+const ai = new GoogleGenerativeAI(apiKey);
 
-// Model IDs – use stable, widely available models
-const MODEL_FAST = "models/gemini-1.5-flash";
-const MODEL_REASONING = "models/gemini-1.5-pro";
-// Keep your TTS preview model (if it ever errors, we can swap to a flash model)
-const MODEL_TTS = "models/gemini-2.5-flash-preview-tts";
+// ------------------------------------------------------------------
+// ✅ MODEL CHOICES — stable, correct IDs
+// ------------------------------------------------------------------
+const MODEL_FAST = "gemini-1.5-flash-latest";
+const MODEL_REASONING = "gemini-1.5-pro-latest";
+const MODEL_TTS = "gemini-1.5-flash"; // stable model with audio support
+ // safest for TTS (or use preview-tts if needed)
 
-// -----------------------------
-// 🔧 HELPER: Write string into WAV header
-// -----------------------------
-function writeString(view: DataView, offset: number, string: string) {
-  for (let i = 0; i < string.length; i++) {
-    view.setUint8(offset + i, string.charCodeAt(i));
+// ------------------------------------------------------------------
+// 🔧 Utility Helpers
+// ------------------------------------------------------------------
+function writeString(view: DataView, offset: number, str: string) {
+  for (let i = 0; i < str.length; i++) {
+    view.setUint8(offset + i, str.charCodeAt(i));
   }
 }
 
-// -----------------------------
-// 🔧 HELPER: Convert raw PCM → WAV
-// -----------------------------
-function pcmToWav(pcmData: Uint8Array, sampleRate: number = 24000): Blob {
+function pcmToWav(pcmData: Uint8Array, sampleRate = 24000): Blob {
   const numChannels = 1;
   const bitsPerSample = 16;
-  const byteRate = (sampleRate * numChannels * bitsPerSample) / 8;
-  const blockAlign = (numChannels * bitsPerSample) / 8;
-  const dataSize = pcmData.length;
+  const headerSize = 44;
 
-  const buffer = new ArrayBuffer(44 + dataSize);
+  const buffer = new ArrayBuffer(headerSize + pcmData.length);
   const view = new DataView(buffer);
 
-  // RIFF
+  // RIFF header
   writeString(view, 0, "RIFF");
-  view.setUint32(4, 36 + dataSize, true);
+  view.setUint32(4, 36 + pcmData.length, true);
   writeString(view, 8, "WAVE");
 
-  // fmt
+  // fmt chunk
   writeString(view, 12, "fmt ");
   view.setUint32(16, 16, true);
   view.setUint16(20, 1, true);
   view.setUint16(22, numChannels, true);
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
+  view.setUint32(28, sampleRate * numChannels * bitsPerSample / 8, true);
+  view.setUint16(32, numChannels * bitsPerSample / 8, true);
   view.setUint16(34, bitsPerSample, true);
 
-  // data
+  // data chunk
   writeString(view, 36, "data");
-  view.setUint32(40, dataSize, true);
+  view.setUint32(40, pcmData.length, true);
 
   const wav = new Uint8Array(buffer);
   wav.set(pcmData, 44);
 
-  return new Blob([buffer], { type: "audio/wav" });
+  return new Blob([wav], { type: "audio/wav" });
 }
 
-// -----------------------------
-// 🔍 Extract grounding (Google Search) sources
-// -----------------------------
-function extractSources(response: any): GroundingSource[] {
+function extractSources(resp: any): GroundingSource[] {
   const chunks =
-    response.candidates?.[0]?.groundingMetadata?.groundingChunks ??
-    response.response?.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    resp.candidates?.[0]?.groundingMetadata?.groundingChunks ||
+    resp.response?.candidates?.[0]?.groundingMetadata?.groundingChunks;
 
   if (!chunks) return [];
 
-  const seen = new Set<string>();
+  const seen = new Set();
   const sources: GroundingSource[] = [];
 
-  chunks.forEach((c: any) => {
-    if (c.web?.uri && c.web?.title && !seen.has(c.web.uri)) {
-      seen.add(c.web.uri);
+  for (const c of chunks) {
+    if (c.web?.uri && !seen.has(c.web.uri)) {
       sources.push({ title: c.web.title, uri: c.web.uri });
+      seen.add(c.web.uri);
     }
-  });
+  }
 
   return sources;
 }
 
-// -----------------------------
-// 🔧 Prepare file uploads for Gemini
-// -----------------------------
-function prepareFileParts(files: UploadedFile[]): Part[] {
-  return files
+function prepareFiles(files: UploadedFile[]): Part[] {
+  return (files || [])
     .filter((f) => f.data && f.mimeType)
     .map((f) => ({
       inlineData: {
-        mimeType: f.mimeType!,
         data: f.data!,
+        mimeType: f.mimeType!,
       },
     }));
 }
 
-// -----------------------------
-// 🔊 TTS (Text → Speech)
-// -----------------------------
-export const generateTTS = async (text: string): Promise<TTSResponse> => {
-  if (!text) throw new Error("No text provided for TTS");
-
+// ------------------------------------------------------------------
+// 🔊 TEXT-TO-SPEECH
+// ------------------------------------------------------------------
+export async function generateTTS(text: string): Promise<TTSResponse> {
   try {
-    const cleanText = text.slice(0, 4000);
-
-    const response = await ai.models.generateContent({
+    const result = await ai.generateContent({
       model: MODEL_TTS,
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: cleanText }],
-        },
-      ],
-      config: {
+      contents: [{ role: "user", parts: [{ text }] }],
+      generationConfig: {
         responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: "Aoede" },
-          },
-        },
       },
     });
 
-    const base64Audio =
-      response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data ??
-      response.response?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    const audio = result.response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!audio) throw new Error("TTS audio missing");
 
-    if (!base64Audio) {
-      throw new Error("Gemini returned no audio.");
-    }
-
-    const binary = atob(base64Audio);
+    const binary = atob(audio);
     const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-
-    const wav = pcmToWav(bytes, 24000);
+    const wav = pcmToWav(bytes);
 
     return {
-      text: cleanText,
-      transcript: cleanText,
-      audio_base64: base64Audio,
+      text,
+      transcript: text,
+      audio_base64: audio,
       audio_mime: "audio/wav",
       blob: wav,
       url: URL.createObjectURL(wav),
     };
-  } catch (error) {
-    console.error("TTS Error:", error);
-    return {
-      text,
-      transcript: text,
-      audio_base64: null,
-      audio_mime: "error",
-      blob: undefined,
-      url: undefined,
-    };
+  } catch (err) {
+    console.error("TTS Error:", err);
+    return { text, transcript: text, audio_mime: "error" };
   }
-};
+}
 
-// -----------------------------
-// 🤖 ORCHESTRATOR AGENT
-// -----------------------------
-export const orchestrateRequest = async (
-  query: string,
-  userProfile: UserProfile | null,
-  files: UploadedFile[],
-  history: string
-): Promise<AgentResponse> => {
-  const fileParts = prepareFileParts(files);
-
-  const systemInstruction = `
-You are Studify AI, an advanced learning assistant.
-You coordinate different tools (explain, quiz, doubt solving, planning, etc.)
-and always respond clearly and helpfully for students.
-Use grounded web search only when truly necessary.
-User profile: ${JSON.stringify(userProfile ?? {}, null, 2)}
-`;
-
-  const prompt = `
-Conversation History:
-${history}
-
-User Query: ${query}
-`;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: MODEL_REASONING,
-      contents: [
-        {
-          role: "user",
-          parts: [...fileParts, { text: prompt }],
-        },
-      ],
-      config: {
-        systemInstruction,
-        tools: [{ googleSearch: {} }],
-      },
-    });
-
-    const text =
-      (response as any).text ??
-      response.response?.candidates?.[0]?.content?.parts
-        ?.map((p: any) => p.text ?? "")
-        .join("\n") ??
-      "";
-
-    return {
-      text: text || "I'm having trouble right now.",
-      sources: extractSources(response),
-    };
-  } catch (error) {
-    console.error("Orchestrator Error:", error);
-    return { text: "Error. Try again." };
-  }
-};
-
-// -----------------------------
-// 📘 Explain Topic Agent
-// -----------------------------
-export const explainTopic = async (
+// ------------------------------------------------------------------
+// 🧠 EXPLAIN TOPIC
+// ------------------------------------------------------------------
+export async function explainTopic(
   topic: string,
   user: UserProfile,
   files: UploadedFile[]
-): Promise<AgentResponse> => {
-  const fileParts = prepareFileParts(files);
-
+): Promise<AgentResponse> {
   const prompt = `
-Explain the topic: "${topic}" for a student.
+Explain the topic "${topic}" clearly for a student.
 
-Student profile:
-${JSON.stringify(user ?? {}, null, 2)}
+Student:
+${JSON.stringify(user, null, 2)}
 
-Requirements:
-1. Start with an intuitive overview in 3–5 sentences.
-2. Then explain step-by-step, like teaching a friend.
-3. Use small examples where helpful.
-4. End with a short "Key points" bullet list.
+Return:
+1. Intuitive overview
+2. Step-by-step explanation
+3. Small examples
+4. Key points summary
 `;
 
   try {
-    const response = await ai.models.generateContent({
+    const result = await ai.generateContent({
       model: MODEL_REASONING,
       contents: [
         {
           role: "user",
-          parts: [...fileParts, { text: prompt }],
+          parts: [...prepareFiles(files), { text: prompt }],
         },
       ],
-      config: {
-        tools: [{ googleSearch: {} }],
-      },
     });
 
     const text =
-      (response as any).text ??
-      response.response?.candidates?.[0]?.content?.parts
-        ?.map((p: any) => p.text ?? "")
-        .join("\n") ??
-      "";
+      result.response.text() ||
+      result.response.candidates?.[0]?.content?.parts?.map((p) => p.text).join("\n");
 
+    return { text, sources: extractSources(result.response) };
+  } catch (err: any) {
+    console.error("ExplainTopic Error:", err);
     return {
-      text: text || "Could not explain.",
-      sources: extractSources(response),
-    };
-  } catch (e: any) {
-    console.error("ExplainTopic error:", e);
-
-    const message =
-      e?.message ||
-      e?.error?.message ||
-      JSON.stringify(e, null, 2);
-
-    // Surface real error text so you can debug in the UI
-    return {
-      text: `Error explaining topic:\n\n${message}`,
+      text: `Error explaining topic:\n\n${err.message || JSON.stringify(err)}`,
       sources: [],
     };
   }
-};
+}
 
-// -----------------------------
-// 🧠 Doubt Solver Agent
-// -----------------------------
-export const solveDoubt = async (
+// ------------------------------------------------------------------
+// ❓ DOUBT SOLVER
+// ------------------------------------------------------------------
+export async function solveDoubt(
   question: string,
   files: UploadedFile[]
-): Promise<AgentResponse> => {
-  const fileParts = prepareFileParts(files);
-
+): Promise<AgentResponse> {
   const prompt = `
-Solve this student doubt: "${question}"
+Solve this student's doubt: "${question}"
 
-1. First restate the doubt in your own words.
-2. Then give a clear, step-by-step solution.
-3. Highlight any common mistakes.
-4. Finish with a short recap.
+Steps:
+1. Restate the doubt
+2. Give a clear step-by-step solution
+3. Highlight mistakes to avoid
+4. Give a short summary
 `;
 
   try {
-    const response = await ai.models.generateContent({
+    const result = await ai.generateContent({
       model: MODEL_REASONING,
       contents: [
         {
           role: "user",
-          parts: [...fileParts, { text: prompt }],
+          parts: [...prepareFiles(files), { text: prompt }],
         },
       ],
-      config: {
-        tools: [{ googleSearch: {} }],
-      },
     });
 
-    const text =
-      (response as any).text ??
-      response.response?.candidates?.[0]?.content?.parts
-        ?.map((p: any) => p.text ?? "")
-        .join("\n") ??
-      "";
-
+    const text = result.response.text();
+    return { text, sources: extractSources(result.response) };
+  } catch (err: any) {
+    console.error("solveDoubt Error:", err);
     return {
-      text: text || "Could not solve the doubt.",
-      sources: extractSources(response),
+      text: `Error solving doubt:\n\n${err.message || JSON.stringify(err)}`,
+      sources: [],
     };
-  } catch (e) {
-    console.error("SolveDoubt error:", e);
-    return { text: "Error solving doubt.", sources: [] };
   }
-};
+}
 
-// -----------------------------
-// 📝 Quiz Generator
-// -----------------------------
-export const generateQuiz = async (
+// ------------------------------------------------------------------
+// 📝 QUIZ GENERATOR
+// ------------------------------------------------------------------
+export async function generateQuiz(
   topic: string,
   difficulty: string
-): Promise<QuizQuestion[]> => {
+): Promise<QuizQuestion[]> {
   const schema: Schema = {
     type: Type.ARRAY,
     items: {
@@ -370,45 +245,32 @@ export const generateQuiz = async (
     },
   };
 
-  const prompt = `Generate a ${difficulty} quiz on "${topic}". 
-Return only JSON matching the schema.`;
+  const prompt = `Generate a ${difficulty} quiz on "${topic}". Return ONLY valid JSON.`;  
 
   try {
-    const response = await ai.models.generateContent({
+    const result = await ai.generateContent({
       model: MODEL_FAST,
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: prompt }],
-        },
-      ],
-      config: {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: schema,
       },
     });
 
-    const text =
-      (response as any).text ??
-      response.response?.candidates?.[0]?.content?.parts
-        ?.map((p: any) => p.text ?? "")
-        .join("\n");
-
-    if (!text) return [];
-    return JSON.parse(text) as QuizQuestion[];
+    return JSON.parse(result.response.text());
   } catch (err) {
-    console.error("generateQuiz error:", err);
+    console.error("Quiz Error:", err);
     return [];
   }
-};
+}
 
-// -----------------------------
-// 📚 Flashcards Agent
-// -----------------------------
-export const generateFlashcards = async (
+// ------------------------------------------------------------------
+// 📚 FLASHCARDS
+// ------------------------------------------------------------------
+export async function generateFlashcards(
   topic: string,
-  count: number = 5
-): Promise<Flashcard[]> => {
+  count = 5
+): Promise<Flashcard[]> {
   const schema: Schema = {
     type: Type.ARRAY,
     items: {
@@ -425,52 +287,36 @@ export const generateFlashcards = async (
     },
   };
 
-  const prompt = `Create ${count} concise flashcards for "${topic}". 
-Return only JSON that matches the schema.`;
+  const prompt = `Create ${count} flashcards for "${topic}". Return JSON only.`;
 
   try {
-    const response = await ai.models.generateContent({
+    const result = await ai.generateContent({
       model: MODEL_FAST,
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: prompt }],
-        },
-      ],
-      config: {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: schema,
       },
     });
 
-    const text =
-      (response as any).text ??
-      response.response?.candidates?.[0]?.content?.parts
-        ?.map((p: any) => p.text ?? "")
-        .join("\n");
-
-    if (!text) return [];
-
-    const cards = JSON.parse(text) as Flashcard[];
-
-    return cards.map((c, i) => ({
+    return JSON.parse(result.response.text()).map((c: any, i: number) => ({
       ...c,
       id: c.id || `fc-${Date.now()}-${i}`,
       nextReview: c.nextReview || new Date().toISOString(),
     }));
   } catch (err) {
-    console.error("generateFlashcards error:", err);
+    console.error("Flashcards Error:", err);
     return [];
   }
-};
+}
 
-// -----------------------------
-// 🗓️ Study Planner Agent
-// -----------------------------
-export const generateStudyPlan = async (
+// ------------------------------------------------------------------
+// 🗓️ STUDY PLAN
+// ------------------------------------------------------------------
+export async function generateStudyPlan(
   user: UserProfile,
   focus: string
-): Promise<StudyPlanDay[]> => {
+): Promise<StudyPlanDay[]> {
   const schema: Schema = {
     type: Type.ARRAY,
     items: {
@@ -487,41 +333,25 @@ export const generateStudyPlan = async (
   const prompt = `
 Generate a 7-day study plan for this student:
 
-${JSON.stringify(user ?? {}, null, 2)}
+${JSON.stringify(user, null, 2)}
 
-Main focus: ${focus}
-
-Each day:
-- Choose a focusTopic
-- Provide 3–6 specific tasks
-Return only JSON that matches the schema.
+Main Focus: ${focus}
+Return ONLY JSON.
 `;
 
   try {
-    const response = await ai.models.generateContent({
+    const result = await ai.generateContent({
       model: MODEL_FAST,
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: prompt }],
-        },
-      ],
-      config: {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: schema,
       },
     });
 
-    const text =
-      (response as any).text ??
-      response.response?.candidates?.[0]?.content?.parts
-        ?.map((p: any) => p.text ?? "")
-        .join("\n");
-
-    if (!text) return [];
-    return JSON.parse(text) as StudyPlanDay[];
+    return JSON.parse(result.response.text());
   } catch (err) {
-    console.error("generateStudyPlan error:", err);
+    console.error("StudyPlan Error:", err);
     return [];
   }
-};
+}

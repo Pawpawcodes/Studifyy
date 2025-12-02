@@ -1,224 +1,118 @@
-import { GoogleGenerativeAI, Schema, Type, Modality, Part } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import {
   UserProfile,
   UploadedFile,
   Flashcard,
   QuizQuestion,
   StudyPlanDay,
-  AgentResponse,
-  GroundingSource,
-  TTSResponse,
+  AgentResponse
 } from "../types";
 
 // ------------------------------------------------------------------
-// 🔥 INITIALIZE GEMINI CLIENT
+// 🔥 INIT
 // ------------------------------------------------------------------
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+if (!apiKey) throw new Error("Missing VITE_GEMINI_API_KEY");
 
-if (!apiKey) {
-  throw new Error("❌ Missing VITE_GEMINI_API_KEY (set it in .env.local + Netlify)");
-}
+const genAI = new GoogleGenerativeAI(apiKey);
 
-const ai = new GoogleGenerativeAI(apiKey);
-
-// ------------------------------------------------------------------
-// ✅ MODEL CHOICES — stable, correct IDs
-// ------------------------------------------------------------------
+// MODELS
 const MODEL_FAST = "gemini-1.5-flash-latest";
 const MODEL_REASONING = "gemini-1.5-pro-latest";
-const MODEL_TTS = "gemini-1.5-flash"; // stable model with audio support
- // safest for TTS (or use preview-tts if needed)
 
 // ------------------------------------------------------------------
-// 🔧 Utility Helpers
+// 🔧 Convert Files
 // ------------------------------------------------------------------
-function writeString(view: DataView, offset: number, str: string) {
-  for (let i = 0; i < str.length; i++) {
-    view.setUint8(offset + i, str.charCodeAt(i));
-  }
-}
-
-function pcmToWav(pcmData: Uint8Array, sampleRate = 24000): Blob {
-  const numChannels = 1;
-  const bitsPerSample = 16;
-  const headerSize = 44;
-
-  const buffer = new ArrayBuffer(headerSize + pcmData.length);
-  const view = new DataView(buffer);
-
-  // RIFF header
-  writeString(view, 0, "RIFF");
-  view.setUint32(4, 36 + pcmData.length, true);
-  writeString(view, 8, "WAVE");
-
-  // fmt chunk
-  writeString(view, 12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * numChannels * bitsPerSample / 8, true);
-  view.setUint16(32, numChannels * bitsPerSample / 8, true);
-  view.setUint16(34, bitsPerSample, true);
-
-  // data chunk
-  writeString(view, 36, "data");
-  view.setUint32(40, pcmData.length, true);
-
-  const wav = new Uint8Array(buffer);
-  wav.set(pcmData, 44);
-
-  return new Blob([wav], { type: "audio/wav" });
-}
-
-function extractSources(resp: any): GroundingSource[] {
-  const chunks =
-    resp.candidates?.[0]?.groundingMetadata?.groundingChunks ||
-    resp.response?.candidates?.[0]?.groundingMetadata?.groundingChunks;
-
-  if (!chunks) return [];
-
-  const seen = new Set();
-  const sources: GroundingSource[] = [];
-
-  for (const c of chunks) {
-    if (c.web?.uri && !seen.has(c.web.uri)) {
-      sources.push({ title: c.web.title, uri: c.web.uri });
-      seen.add(c.web.uri);
-    }
-  }
-
-  return sources;
-}
-
-function prepareFiles(files: UploadedFile[]): Part[] {
+function prepareFiles(files: UploadedFile[]) {
   return (files || [])
     .filter((f) => f.data && f.mimeType)
     .map((f) => ({
       inlineData: {
         data: f.data!,
-        mimeType: f.mimeType!,
-      },
+        mimeType: f.mimeType!
+      }
     }));
 }
 
 // ------------------------------------------------------------------
-// 🔊 TEXT-TO-SPEECH
-// ------------------------------------------------------------------
-export async function generateTTS(text: string): Promise<TTSResponse> {
-  try {
-    const result = await ai.generateContent({
-      model: MODEL_TTS,
-      contents: [{ role: "user", parts: [{ text }] }],
-      generationConfig: {
-        responseModalities: [Modality.AUDIO],
-      },
-    });
-
-    const audio = result.response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!audio) throw new Error("TTS audio missing");
-
-    const binary = atob(audio);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-
-    const wav = pcmToWav(bytes);
-
-    return {
-      text,
-      transcript: text,
-      audio_base64: audio,
-      audio_mime: "audio/wav",
-      blob: wav,
-      url: URL.createObjectURL(wav),
-    };
-  } catch (err) {
-    console.error("TTS Error:", err);
-    return { text, transcript: text, audio_mime: "error" };
-  }
-}
-
-// ------------------------------------------------------------------
-// 🧠 EXPLAIN TOPIC
+// 📘 EXPLAIN TOPIC
 // ------------------------------------------------------------------
 export async function explainTopic(
   topic: string,
   user: UserProfile,
   files: UploadedFile[]
 ): Promise<AgentResponse> {
+
   const prompt = `
-Explain the topic "${topic}" clearly for a student.
+Explain the topic: "${topic}" clearly.
 
 Student:
 ${JSON.stringify(user, null, 2)}
 
 Return:
-1. Intuitive overview
-2. Step-by-step explanation
-3. Small examples
-4. Key points summary
-`;
+- Simple explanation
+- Steps
+- Example
+- Summary
+  `;
 
   try {
-    const result = await ai.generateContent({
-      model: MODEL_REASONING,
-      contents: [
-        {
-          role: "user",
-          parts: [...prepareFiles(files), { text: prompt }],
-        },
-      ],
-    });
+    const model = genAI.getGenerativeModel({ model: MODEL_REASONING });
 
-    const text =
-      result.response.text() ||
-      result.response.candidates?.[0]?.content?.parts?.map((p) => p.text).join("\n");
+    const result = await model.generateContent([
+      ...prepareFiles(files),
+      { text: prompt }
+    ]);
 
-    return { text, sources: extractSources(result.response) };
-  } catch (err: any) {
-    console.error("ExplainTopic Error:", err);
     return {
-      text: `Error explaining topic:\n\n${err.message || JSON.stringify(err)}`,
-      sources: [],
+      text: result.response.text(),
+      sources: []
+    };
+
+  } catch (err: any) {
+    console.error("Explain error:", err);
+    return {
+      text: `Error explaining topic:\n${err.message || JSON.stringify(err)}`,
+      sources: []
     };
   }
 }
 
 // ------------------------------------------------------------------
-// ❓ DOUBT SOLVER
+// ❓ SOLVE DOUBT
 // ------------------------------------------------------------------
 export async function solveDoubt(
   question: string,
   files: UploadedFile[]
 ): Promise<AgentResponse> {
-  const prompt = `
-Solve this student's doubt: "${question}"
 
-Steps:
-1. Restate the doubt
-2. Give a clear step-by-step solution
-3. Highlight mistakes to avoid
-4. Give a short summary
+  const prompt = `
+Solve this doubt: "${question}"
+
+Explain:
+- What the doubt means
+- How to solve step-by-step
+- Common mistakes
+- Final summary
 `;
 
   try {
-    const result = await ai.generateContent({
-      model: MODEL_REASONING,
-      contents: [
-        {
-          role: "user",
-          parts: [...prepareFiles(files), { text: prompt }],
-        },
-      ],
-    });
+    const model = genAI.getGenerativeModel({ model: MODEL_REASONING });
 
-    const text = result.response.text();
-    return { text, sources: extractSources(result.response) };
-  } catch (err: any) {
-    console.error("solveDoubt Error:", err);
+    const result = await model.generateContent([
+      ...prepareFiles(files),
+      { text: prompt }
+    ]);
+
     return {
-      text: `Error solving doubt:\n\n${err.message || JSON.stringify(err)}`,
-      sources: [],
+      text: result.response.text(),
+      sources: []
+    };
+
+  } catch (e: any) {
+    return {
+      text: `Error solving doubt:\n${e.message || JSON.stringify(e)}`,
+      sources: []
     };
   }
 }
@@ -230,36 +124,29 @@ export async function generateQuiz(
   topic: string,
   difficulty: string
 ): Promise<QuizQuestion[]> {
-  const schema: Schema = {
-    type: Type.ARRAY,
-    items: {
-      type: Type.OBJECT,
-      properties: {
-        id: { type: Type.STRING },
-        question: { type: Type.STRING },
-        options: { type: Type.ARRAY, items: { type: Type.STRING } },
-        correctIndex: { type: Type.INTEGER },
-        explanation: { type: Type.STRING },
-      },
-      required: ["id", "question", "options", "correctIndex", "explanation"],
-    },
-  };
 
-  const prompt = `Generate a ${difficulty} quiz on "${topic}". Return ONLY valid JSON.`;  
+  const prompt = `
+Generate a JSON quiz for topic "${topic}" (${difficulty} difficulty).
+
+Format exactly:
+[
+  {
+    "id": "1",
+    "question": "...",
+    "options": ["A", "B", "C", "D"],
+    "correctIndex": 0,
+    "explanation": "..."
+  }
+]
+`;
 
   try {
-    const result = await ai.generateContent({
-      model: MODEL_FAST,
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: schema,
-      },
-    });
-
+    const model = genAI.getGenerativeModel({ model: MODEL_FAST });
+    const result = await model.generateContent(prompt);
     return JSON.parse(result.response.text());
-  } catch (err) {
-    console.error("Quiz Error:", err);
+
+  } catch (e) {
+    console.error("Quiz error:", e);
     return [];
   }
 }
@@ -271,41 +158,28 @@ export async function generateFlashcards(
   topic: string,
   count = 5
 ): Promise<Flashcard[]> {
-  const schema: Schema = {
-    type: Type.ARRAY,
-    items: {
-      type: Type.OBJECT,
-      properties: {
-        id: { type: Type.STRING },
-        front: { type: Type.STRING },
-        back: { type: Type.STRING },
-        topic: { type: Type.STRING },
-        difficulty: { type: Type.NUMBER },
-        nextReview: { type: Type.STRING },
-      },
-      required: ["front", "back", "topic"],
-    },
-  };
 
-  const prompt = `Create ${count} flashcards for "${topic}". Return JSON only.`;
+  const prompt = `
+Create exactly ${count} flashcards for topic "${topic}" in JSON:
+
+[
+  { "front": "...", "back": "...", "topic": "${topic}" }
+]
+`;
 
   try {
-    const result = await ai.generateContent({
-      model: MODEL_FAST,
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: schema,
-      },
-    });
+    const model = genAI.getGenerativeModel({ model: MODEL_FAST });
+    const result = await model.generateContent(prompt);
+    const cards = JSON.parse(result.response.text());
 
-    return JSON.parse(result.response.text()).map((c: any, i: number) => ({
+    return cards.map((c: any, i: number) => ({
       ...c,
-      id: c.id || `fc-${Date.now()}-${i}`,
-      nextReview: c.nextReview || new Date().toISOString(),
+      id: `card-${Date.now()}-${i}`,
+      nextReview: new Date().toISOString()
     }));
-  } catch (err) {
-    console.error("Flashcards Error:", err);
+
+  } catch (e) {
+    console.error("Flashcards error:", e);
     return [];
   }
 }
@@ -317,41 +191,87 @@ export async function generateStudyPlan(
   user: UserProfile,
   focus: string
 ): Promise<StudyPlanDay[]> {
-  const schema: Schema = {
-    type: Type.ARRAY,
-    items: {
-      type: Type.OBJECT,
-      properties: {
-        day: { type: Type.STRING },
-        focusTopic: { type: Type.STRING },
-        tasks: { type: Type.ARRAY, items: { type: Type.STRING } },
-      },
-      required: ["day", "focusTopic", "tasks"],
-    },
-  };
 
   const prompt = `
-Generate a 7-day study plan for this student:
+Create a 7-day study plan for:
 
 ${JSON.stringify(user, null, 2)}
 
-Main Focus: ${focus}
-Return ONLY JSON.
+Focus: ${focus}
+
+Return JSON:
+[
+  { "day": "Day 1", "focusTopic": "...", "tasks": ["task1","task2"] }
+]
 `;
 
   try {
-    const result = await ai.generateContent({
-      model: MODEL_FAST,
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: schema,
-      },
-    });
+    const model = genAI.getGenerativeModel({ model: MODEL_FAST });
+    const result = await model.generateContent(prompt);
 
     return JSON.parse(result.response.text());
-  } catch (err) {
-    console.error("StudyPlan Error:", err);
+
+  } catch (e) {
+    console.error("Study plan error:", e);
     return [];
   }
+}
+// ------------------------------------------------------------------
+// 🔊 TEMPORARY TTS PLACEHOLDER (since @google/generative-ai has no TTS)
+// ------------------------------------------------------------------
+export async function generateTTS(text: string) {
+  console.warn("⚠ generateTTS() is a placeholder — Gemini TTS not supported in this SDK.");
+
+  // Produce 0.4 seconds of silence so the audio player doesn't break
+  const sampleRate = 24000;
+  const durationSeconds = 0.4;
+  const numSamples = Math.floor(sampleRate * durationSeconds);
+
+  // Create silent PCM audio
+  const pcmData = new Uint8Array(numSamples);
+
+  // Convert PCM → WAV
+  function pcmToWav(pcm: Uint8Array, sampleRate: number) {
+    const numChannels = 1;
+    const bitsPerSample = 16;
+    const blockAlign = numChannels * bitsPerSample / 8;
+    const byteRate = sampleRate * blockAlign;
+    const wavBuffer = new ArrayBuffer(44 + pcm.length);
+    const view = new DataView(wavBuffer);
+
+    function writeString(offset: number, str: string) {
+      for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+    }
+
+    writeString(0, "RIFF");
+    view.setUint32(4, 36 + pcm.length, true);
+    writeString(8, "WAVE");
+
+    writeString(12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitsPerSample, true);
+
+    writeString(36, "data");
+    view.setUint32(40, pcm.length, true);
+
+    new Uint8Array(wavBuffer).set(pcm, 44);
+    return new Blob([wavBuffer], { type: "audio/wav" });
+  }
+
+  const wavBlob = pcmToWav(pcmData, sampleRate);
+  const url = URL.createObjectURL(wavBlob);
+
+  return {
+    text,
+    transcript: text,
+    audio_base64: "",
+    audio_mime: "audio/wav",
+    blob: wavBlob,
+    url
+  };
 }

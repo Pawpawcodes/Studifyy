@@ -1,5 +1,4 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import OpenAI from "openai";
 
 import {
   UserProfile,
@@ -14,25 +13,15 @@ import {
 // 🔥 INIT GEMINI FOR TEXT MODELS
 // ------------------------------------------------------------------
 const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
-if (!geminiKey) throw new Error("❌ Missing VITE_GEMINI_API_KEY");
+if (!geminiKey) {
+  console.error("❌ Missing VITE_GEMINI_API_KEY");
+}
 
-const genAI = new GoogleGenerativeAI(geminiKey);
+const genAI = new GoogleGenerativeAI(geminiKey || "");
 
 // Gemini models
 const MODEL_FAST = "gemini-1.5-flash-latest";
 const MODEL_REASONING = "gemini-1.5-pro-latest";
-
-// ------------------------------------------------------------------
-// 🔥 INIT OPENAI FOR REAL TTS AUDIO
-// ------------------------------------------------------------------
-const openaiKey = import.meta.env.VITE_OPENAI_API_KEY;
-
-let openai: OpenAI | null = null;
-if (openaiKey) {
-  openai = new OpenAI({ apiKey: openaiKey });
-} else {
-  console.warn("⚠ OPENAI TTS is disabled (no key provided)");
-}
 
 // ------------------------------------------------------------------
 // 🔧 PREPARE FILES FOR GEMINI
@@ -68,7 +57,7 @@ ${history}
 User query:
 "${query}"
 
-Give a clear helpful reply.
+Give a clear, helpful reply.
 `;
 
   try {
@@ -120,6 +109,7 @@ Output:
 
     return { text: result.response.text(), sources: [] };
   } catch (err: any) {
+    console.error("ExplainTopic ERROR:", err);
     return {
       text: "Error explaining topic:\n" + err.message,
       sources: [],
@@ -151,6 +141,7 @@ Explain:
 
     return { text: result.response.text(), sources: [] };
   } catch (err: any) {
+    console.error("solveDoubt ERROR:", err);
     return { text: "Error solving doubt:\n" + err.message, sources: [] };
   }
 }
@@ -252,40 +243,21 @@ Return JSON:
 
     return JSON.parse(result.response.text());
   } catch (err) {
+    console.error("StudyPlan ERROR:", err);
     return [];
   }
 }
 
 // ------------------------------------------------------------------
-// 🔊 REAL TTS USING OPENAI
+// 🔊 TEMP TTS — DISABLED (NO OPENAI IN BROWSER)
 // ------------------------------------------------------------------
 export async function generateTTS(text: string) {
-  if (!openai) {
-    console.warn("⚠ TTS disabled — No OpenAI key found.");
-    return { text, transcript: text, blob: null, url: null };
-  }
-
-  try {
-    const response = await openai.audio.speech.create({
-      model: "gpt-4o-mini-tts",
-      voice: "alloy",
-      input: text,
-      format: "wav",
-    });
-
-    const buffer = await response.arrayBuffer();
-    const blob = new Blob([buffer], { type: "audio/wav" });
-    const url = URL.createObjectURL(blob);
-
-    return {
-      text,
-      transcript: text,
-      blob,
-      url,
-      audio_mime: "audio/wav",
-    };
-  } catch (err: any) {
-    console.error("TTS ERROR:", err);
-    return { text, transcript: text, blob: null, url: null };
-  }
-}
+  console.warn("TTS is currently disabled in frontend (no safe browser TTS).");
+  return {
+    text,
+    transcript: text,
+    blob: null,
+    url: null,
+    audio_mime: "audio/wav",
+  };
+} 

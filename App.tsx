@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate, HashRouter } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 
 import { StoreProvider, useStore } from './context/StoreContext';
 import { AudioProvider } from './context/AudioContext';
@@ -162,17 +162,15 @@ const AppRoutes: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <HashRouter>
-      <AuthProvider>
-        <StoreProvider>
-          <AudioProvider>
-            <AuthBar />
-            <AppRoutes />
-            <ChatWidget />
-          </AudioProvider>
-        </StoreProvider>
-      </AuthProvider>
-    </HashRouter>
+    <AuthProvider>
+      <StoreProvider>
+        <AudioProvider>
+          <AuthBar />
+          <AppRoutes />
+          <ChatWidget />
+        </AudioProvider>
+      </StoreProvider>
+    </AuthProvider>
   );
 };
 

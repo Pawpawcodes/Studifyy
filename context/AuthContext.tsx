@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../supabaseClientFrontend';
-import { UserProfile } from '../types';
 
 interface AuthContextType {
   session: Session | null;
@@ -17,40 +16,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Initial session check
+    // Initial session fetch
     supabase.auth.getSession().then(({ data, error }) => {
-      if (error) {
-        console.error('Error getting session:', error);
-      } else {
-        setSession(data.session);
-      }
+      if (error) console.error('Error getting session:', error);
+      setSession(data.session);
       setLoading(false);
     });
 
-    // Listen for auth state changes (sign in / sign out)
+    // Auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
       setLoading(false);
     });
 
-    return () => {
-      subscription.unsubscribe();
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
   const googleSignIn = async () => {
-    const redirectTo = `${window.location.origin}/login`;
+    /**
+     * FUTURE-PROOF REDIRECT
+     * Works regardless of:
+     *  - New Netlify project
+     *  - Domain changes
+     *  - Localhost vs Production
+     * 
+     * HashRouter requires "/#/login"
+     */
+    const redirectTo = `${window.location.origin}/#/login`;
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        redirectTo,
-      },
+      options: { redirectTo },
     });
 
-    if (error) {
-      console.error('Google Sign-in Error:', error);
-    }
+    if (error) console.error('Google Sign-in Error:', error);
   };
 
   const signOut = async () => {
@@ -67,8 +66,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };

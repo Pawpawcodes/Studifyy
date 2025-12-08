@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import OpenAI from "openai";
 
 import {
   UserProfile,
@@ -9,24 +10,36 @@ import {
   AgentResponse,
 } from "../types";
 
-// ------------------------------------------------------------------
-// 🔥 INIT GEMINI CLIENT
-// ------------------------------------------------------------------
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+// =====================================================
+//  INIT GEMINI
+// =====================================================
+const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+if (!geminiKey) console.error("❌ Missing VITE_GEMINI_API_KEY");
 
-if (!apiKey) {
-  console.error("❌ Missing VITE_GEMINI_API_KEY in .env.local");
+const genAI = new GoogleGenerativeAI(geminiKey);
+
+// Correct models
+const MODEL_FAST = "gemini-1.5-flash";
+const MODEL_REASONING = "gemini-1.5-pro";
+
+// =====================================================
+//  INIT OPENAI FOR TTS  (Frontend Safe)
+// =====================================================
+const openaiKey = import.meta.env.VITE_OPENAI_API_KEY;
+
+let openai: OpenAI | null = null;
+if (openaiKey) {
+  openai = new OpenAI({
+    apiKey: openaiKey,
+    dangerouslyAllowBrowser: true, // REQUIRED for frontend TTS
+  });
+} else {
+  console.warn("⚠ No OPENAI key — TTS disabled.");
 }
 
-const genAI = new GoogleGenerativeAI(apiKey || "");
-
-// Stable models
-const MODEL_REASONING = "gemini-1.5-pro-latest";
-const MODEL_FAST = "gemini-1.5-flash-latest";
-
-// ------------------------------------------------------------------
-// 🔧 PREPARE FILES FOR GEMINI
-// ------------------------------------------------------------------
+// =====================================================
+//  FILE HELPER
+// =====================================================
 function prepareFiles(files: UploadedFile[]) {
   return (files || [])
     .filter((f) => f.data && f.mimeType)
@@ -38,9 +51,9 @@ function prepareFiles(files: UploadedFile[]) {
     }));
 }
 
-// ------------------------------------------------------------------
-// 🤖 MAIN CHATBOT — orchestrateRequest
-// ------------------------------------------------------------------
+// =====================================================
+//  ORCHESTRATOR
+// =====================================================
 export async function orchestrateRequest(
   query: string,
   userProfile: UserProfile | null,
@@ -48,155 +61,139 @@ export async function orchestrateRequest(
   history: string
 ): Promise<AgentResponse> {
   const prompt = `
-You are Studify AI, a helpful learning assistant.
+You are Studify AI.
+Be clear, helpful, and tutor-like.
 
-Student Profile:
+User profile:
 ${JSON.stringify(userProfile ?? {}, null, 2)}
 
-Conversation History:
+History:
 ${history}
 
-User query:
-"${query}"
-
-Respond clearly and helpfully.
-`;
+User query: "${query}"
+  `;
 
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_REASONING });
 
-    const result = await model.generateContent([
-      ...prepareFiles(files),
-      { text: prompt },
-    ]);
-
-    return {
-      text: result.response.text(),
-      sources: [],
-    };
-  } catch (error: any) {
-    console.error("❌ orchestrateRequest ERROR:", error);
-    return { text: "Error responding to your query.", sources: [] };
-  }
-}
-
-// ------------------------------------------------------------------
-// 📘 Explain Topic
-// ------------------------------------------------------------------
-export async function explainTopic(
-  topic: string,
-  user: UserProfile,
-  files: UploadedFile[]
-): Promise<AgentResponse> {
-  const prompt = `
-Explain "${topic}" simply.
-
-Student:
-${JSON.stringify(user, null, 2)}
-
-Include:
-- Overview
-- Step-by-step explanation
-- Example
-- Summary
-`;
-
-  try {
-    const model = genAI.getGenerativeModel({ model: MODEL_REASONING });
-    const result = await model.generateContent([
-      ...prepareFiles(files),
-      { text: prompt },
-    ]);
-
-    return {
-      text: result.response.text(),
-      sources: [],
-    };
-  } catch (error: any) {
-    return { text: "Error explaining topic:\n" + error.message, sources: [] };
-  }
-}
-
-// ------------------------------------------------------------------
-// ❓ Solve Doubt
-// ------------------------------------------------------------------
-export async function solveDoubt(
-  question: string,
-  files: UploadedFile[]
-): Promise<AgentResponse> {
-  const prompt = `
-Solve this doubt: "${question}"
-
-Provide:
-- What the doubt means
-- Step-by-step solution
-- Common mistakes
-- Summary
-`;
-
-  try {
-    const model = genAI.getGenerativeModel({ model: MODEL_REASONING });
     const result = await model.generateContent([
       ...prepareFiles(files),
       { text: prompt },
     ]);
 
     return { text: result.response.text(), sources: [] };
-  } catch (error: any) {
-    return { text: "Error solving doubt:\n" + error.message, sources: [] };
+  } catch (err: any) {
+    console.error("orchestrateRequest ERROR:", err);
+    return { text: "Error while responding.", sources: [] };
   }
 }
 
-// ------------------------------------------------------------------
-// 📝 Quiz Generator
-// ------------------------------------------------------------------
-export async function generateQuiz(
+// =====================================================
+//  EXPLAIN TOPIC
+// =====================================================
+export async function explainTopic(
   topic: string,
-  difficulty: string
-): Promise<QuizQuestion[]> {
+  user: UserProfile,
+  files: UploadedFile[]
+): Promise<AgentResponse> {
   const prompt = `
-Generate a quiz about "${topic}" (${difficulty}). Return ONLY JSON:
+Explain the topic "${topic}" clearly.
+
+Student:
+${JSON.stringify(user, null, 2)}
+
+Required:
+- Simple overview
+- Step-by-step explanation
+- Small example
+- Key points summary
+  `;
+
+  try {
+    const model = genAI.getGenerativeModel({ model: MODEL_REASONING });
+
+    const result = await model.generateContent([
+      ...prepareFiles(files),
+      { text: prompt },
+    ]);
+
+    return { text: result.response.text(), sources: [] };
+  } catch (err: any) {
+    return { text: "Error explaining topic:\n" + err.message, sources: [] };
+  }
+}
+
+// =====================================================
+//  DOUBTS
+// =====================================================
+export async function solveDoubt(question: string, files: UploadedFile[]) {
+  const prompt = `
+Solve the student's doubt: "${question}"
+
+Explain:
+- Doubt meaning
+- Step-by-step reasoning
+- Final answer
+- Common mistakes
+- Summary
+  `;
+
+  try {
+    const model = genAI.getGenerativeModel({ model: MODEL_REASONING });
+
+    const result = await model.generateContent([
+      ...prepareFiles(files),
+      { text: prompt },
+    ]);
+
+    return { text: result.response.text(), sources: [] };
+  } catch (err: any) {
+    return { text: "Error solving doubt.", sources: [] };
+  }
+}
+
+// =====================================================
+//  QUIZ
+// =====================================================
+export async function generateQuiz(topic: string, difficulty: string) {
+  const prompt = `
+Create a ${difficulty} quiz for topic "${topic}".
+JSON output only:
 
 [
   {
     "id": "1",
-    "question": "",
-    "options": ["A","B","C","D"],
+    "question": "....",
+    "options": ["A", "B", "C", "D"],
     "correctIndex": 0,
-    "explanation": ""
+    "explanation": "..."
   }
 ]
-`;
+  `;
 
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_FAST });
+
     const result = await model.generateContent(prompt);
 
     return JSON.parse(result.response.text());
-  } catch (error) {
-    console.error("Quiz ERROR:", error);
+  } catch {
     return [];
   }
 }
 
-// ------------------------------------------------------------------
-// 📚 Flashcards
-// ------------------------------------------------------------------
-export async function generateFlashcards(
-  topic: string,
-  count = 5
-): Promise<Flashcard[]> {
+// =====================================================
+//  FLASHCARDS
+// =====================================================
+export async function generateFlashcards(topic: string, count = 5) {
   const prompt = `
-Generate ${count} flashcards for "${topic}".  
-Return ONLY JSON:
-
-[
-  { "front": "", "back": "", "topic": "${topic}" }
-]
-`;
+Generate ${count} flashcards for "${topic}".
+JSON only.
+  `;
 
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_FAST });
+
     const result = await model.generateContent(prompt);
 
     const cards = JSON.parse(result.response.text());
@@ -204,58 +201,64 @@ Return ONLY JSON:
     return cards.map((c: any, i: number) => ({
       ...c,
       id: `fc-${Date.now()}-${i}`,
-      difficulty: 1,
       nextReview: new Date().toISOString(),
+      difficulty: 1,
     }));
-  } catch (error) {
-    console.error("Flashcards ERROR:", error);
+  } catch {
     return [];
   }
 }
 
-// ------------------------------------------------------------------
-// 🗓 Study Plan Generator
-// ------------------------------------------------------------------
-export async function generateStudyPlan(
-  user: UserProfile,
-  focus: string
-): Promise<StudyPlanDay[]> {
+// =====================================================
+//  STUDY PLAN
+// =====================================================
+export async function generateStudyPlan(user: UserProfile, focus: string) {
   const prompt = `
-Create a 7-day study plan.
+Generate a 7-day study plan.
 
 Student:
 ${JSON.stringify(user, null, 2)}
 
 Focus: ${focus}
 
-Return ONLY JSON like:
-[
-  { "day": "Day 1", "focusTopic": "...", "tasks": ["..."] }
-]
-`;
+Return JSON only.
+  `;
 
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_FAST });
+
     const result = await model.generateContent(prompt);
 
     return JSON.parse(result.response.text());
-  } catch (error) {
-    console.error("StudyPlan ERROR:", error);
+  } catch {
     return [];
   }
 }
 
-// ------------------------------------------------------------------
-// 🔊 TEMP TTS (Disabled safely)
-// ------------------------------------------------------------------
+// =====================================================
+//  TTS (WORKING) — OpenAI AUDIO OUTPUT
+// =====================================================
 export async function generateTTS(text: string) {
-  console.warn("TTS disabled (no browser-safe TTS).");
+  if (!openai) {
+    console.warn("⚠ TTS disabled — missing OpenAI key");
+    return { text, transcript: text, url: null, blob: null };
+  }
 
-  return {
-    text,
-    transcript: text,
-    blob: null,
-    url: null,
-    audio_mime: "audio/wav",
-  };
+  try {
+    const audio = await openai.audio.speech.create({
+      model: "gpt-4o-mini-tts",
+      voice: "alloy",
+      input: text,
+      format: "wav",
+    });
+
+    const buffer = await audio.arrayBuffer();
+    const blob = new Blob([buffer], { type: "audio/wav" });
+    const url = URL.createObjectURL(blob);
+
+    return { text, transcript: text, blob, url };
+  } catch (err) {
+    console.error("TTS ERROR:", err);
+    return { text, transcript: text, url: null, blob: null };
+  }
 }

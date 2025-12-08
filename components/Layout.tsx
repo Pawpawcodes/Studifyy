@@ -42,7 +42,11 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       {/* Sidebar - Desktop */}
       <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 fixed h-full z-20">
         <div className="p-6 flex items-center space-x-3">
-          <img src="https://picsum.photos/40/40?grayscale" alt="Logo" className="w-10 h-10 rounded-lg" />
+          <img
+            src="/studify-logo.png"
+            alt="Studify logo"
+            className="w-10 h-10 rounded-lg object-contain bg-transparent"
+          />
           <div>
             <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Studify</h1>
             <p className="text-xs text-slate-500">Multi-Agent Tutor</p>

@@ -16,10 +16,12 @@ export const LandingPage: React.FC = () => {
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <nav className="p-6 flex justify-between items-center max-w-7xl mx-auto w-full">
         <div className="flex items-center space-x-2">
-           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-             <span className="text-white font-bold text-lg">S</span>
-           </div>
-           <span className="text-2xl font-bold text-slate-900 tracking-tight">Studify</span>
+          <img
+            src="/studify-logo.png"
+            alt="Studify logo"
+            className="w-10 h-10 object-contain"
+          />
+          <span className="text-2xl font-bold text-slate-900 tracking-tight">Studify</span>
         </div>
         <button onClick={handleGetStarted} className="text-sm font-semibold text-slate-600 hover:text-primary">
           Log In

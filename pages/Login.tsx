@@ -17,8 +17,12 @@ const Login: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4">
       <div className="bg-white p-8 rounded-2xl shadow-xl border border-slate-100 max-w-md w-full text-center">
-        <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-6 text-white">
-          <Brain size={40} />
+        <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6">
+          <img
+            src="/studify-logo.png"
+            alt="Studify logo"
+            className="w-full h-full object-contain"
+          />
         </div>
         
         <h1 className="text-3xl font-bold text-slate-900 mb-2">Welcome to Studify</h1>

@@ -10,18 +10,19 @@ import {
 } from "../types";
 
 // ------------------------------------------------------------------
-// 🔥 INIT GEMINI FOR TEXT MODELS
+// 🔥 INIT GEMINI CLIENT
 // ------------------------------------------------------------------
-const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
-if (!geminiKey) {
-  console.error("❌ Missing VITE_GEMINI_API_KEY");
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+if (!apiKey) {
+  console.error("❌ Missing VITE_GEMINI_API_KEY in .env.local");
 }
 
-const genAI = new GoogleGenerativeAI(geminiKey || "");
+const genAI = new GoogleGenerativeAI(apiKey || "");
 
-// Gemini models
-const MODEL_FAST = "gemini-1.5-flash-latest";
+// Stable models
 const MODEL_REASONING = "gemini-1.5-pro-latest";
+const MODEL_FAST = "gemini-1.5-flash-latest";
 
 // ------------------------------------------------------------------
 // 🔧 PREPARE FILES FOR GEMINI
@@ -38,7 +39,7 @@ function prepareFiles(files: UploadedFile[]) {
 }
 
 // ------------------------------------------------------------------
-// 🤖 ORCHESTRATOR (MAIN CHAT BOT)
+// 🤖 MAIN CHATBOT — orchestrateRequest
 // ------------------------------------------------------------------
 export async function orchestrateRequest(
   query: string,
@@ -47,8 +48,9 @@ export async function orchestrateRequest(
   history: string
 ): Promise<AgentResponse> {
   const prompt = `
-You are Studify AI, a friendly helpful learning assistant.
-Student profile:
+You are Studify AI, a helpful learning assistant.
+
+Student Profile:
 ${JSON.stringify(userProfile ?? {}, null, 2)}
 
 Conversation History:
@@ -57,7 +59,7 @@ ${history}
 User query:
 "${query}"
 
-Give a clear, helpful reply.
+Respond clearly and helpfully.
 `;
 
   try {
@@ -72,17 +74,14 @@ Give a clear, helpful reply.
       text: result.response.text(),
       sources: [],
     };
-  } catch (err: any) {
-    console.error("orchestrateRequest ERROR:", err);
-    return {
-      text: "Error while responding. Try again.",
-      sources: [],
-    };
+  } catch (error: any) {
+    console.error("❌ orchestrateRequest ERROR:", error);
+    return { text: "Error responding to your query.", sources: [] };
   }
 }
 
 // ------------------------------------------------------------------
-// 📘 EXPLAIN TOPIC
+// 📘 Explain Topic
 // ------------------------------------------------------------------
 export async function explainTopic(
   topic: string,
@@ -95,111 +94,110 @@ Explain "${topic}" simply.
 Student:
 ${JSON.stringify(user, null, 2)}
 
-Output:
-- Simple explanation  
-- Step-by-step  
-- Example  
-- Summary  
+Include:
+- Overview
+- Step-by-step explanation
+- Example
+- Summary
 `;
 
   try {
-    const result = await genAI
-      .getGenerativeModel({ model: MODEL_REASONING })
-      .generateContent([...prepareFiles(files), { text: prompt }]);
+    const model = genAI.getGenerativeModel({ model: MODEL_REASONING });
+    const result = await model.generateContent([
+      ...prepareFiles(files),
+      { text: prompt },
+    ]);
 
-    return { text: result.response.text(), sources: [] };
-  } catch (err: any) {
-    console.error("ExplainTopic ERROR:", err);
     return {
-      text: "Error explaining topic:\n" + err.message,
+      text: result.response.text(),
       sources: [],
     };
+  } catch (error: any) {
+    return { text: "Error explaining topic:\n" + error.message, sources: [] };
   }
 }
 
 // ------------------------------------------------------------------
-// ❓ SOLVE DOUBT
+// ❓ Solve Doubt
 // ------------------------------------------------------------------
 export async function solveDoubt(
   question: string,
   files: UploadedFile[]
 ): Promise<AgentResponse> {
   const prompt = `
-Solve the student's doubt: "${question}"
+Solve this doubt: "${question}"
 
-Explain:
-- What the doubt means  
-- Step-by-step solution  
-- Common mistakes  
-- Summary  
+Provide:
+- What the doubt means
+- Step-by-step solution
+- Common mistakes
+- Summary
 `;
 
   try {
-    const result = await genAI
-      .getGenerativeModel({ model: MODEL_REASONING })
-      .generateContent([...prepareFiles(files), { text: prompt }]);
+    const model = genAI.getGenerativeModel({ model: MODEL_REASONING });
+    const result = await model.generateContent([
+      ...prepareFiles(files),
+      { text: prompt },
+    ]);
 
     return { text: result.response.text(), sources: [] };
-  } catch (err: any) {
-    console.error("solveDoubt ERROR:", err);
-    return { text: "Error solving doubt:\n" + err.message, sources: [] };
+  } catch (error: any) {
+    return { text: "Error solving doubt:\n" + error.message, sources: [] };
   }
 }
 
 // ------------------------------------------------------------------
-// 📝 QUIZ GENERATOR
+// 📝 Quiz Generator
 // ------------------------------------------------------------------
 export async function generateQuiz(
   topic: string,
   difficulty: string
 ): Promise<QuizQuestion[]> {
   const prompt = `
-Generate a quiz about "${topic}" (${difficulty}) in JSON only:
+Generate a quiz about "${topic}" (${difficulty}). Return ONLY JSON:
 
 [
   {
     "id": "1",
-    "question": "...",
+    "question": "",
     "options": ["A","B","C","D"],
     "correctIndex": 0,
-    "explanation": "..."
+    "explanation": ""
   }
 ]
-RETURN ONLY JSON.
 `;
 
   try {
-    const result = await genAI
-      .getGenerativeModel({ model: MODEL_FAST })
-      .generateContent(prompt);
+    const model = genAI.getGenerativeModel({ model: MODEL_FAST });
+    const result = await model.generateContent(prompt);
 
     return JSON.parse(result.response.text());
-  } catch (err) {
-    console.error("Quiz ERROR:", err);
+  } catch (error) {
+    console.error("Quiz ERROR:", error);
     return [];
   }
 }
 
 // ------------------------------------------------------------------
-// 📚 FLASHCARDS
+// 📚 Flashcards
 // ------------------------------------------------------------------
 export async function generateFlashcards(
   topic: string,
   count = 5
 ): Promise<Flashcard[]> {
   const prompt = `
-Generate ${count} flashcards for "${topic}" in JSON:
+Generate ${count} flashcards for "${topic}".  
+Return ONLY JSON:
 
 [
-  { "front": "...", "back": "...", "topic": "${topic}" }
+  { "front": "", "back": "", "topic": "${topic}" }
 ]
-RETURN ONLY JSON.
 `;
 
   try {
-    const result = await genAI
-      .getGenerativeModel({ model: MODEL_FAST })
-      .generateContent(prompt);
+    const model = genAI.getGenerativeModel({ model: MODEL_FAST });
+    const result = await model.generateContent(prompt);
 
     const cards = JSON.parse(result.response.text());
 
@@ -209,14 +207,14 @@ RETURN ONLY JSON.
       difficulty: 1,
       nextReview: new Date().toISOString(),
     }));
-  } catch (err) {
-    console.error("Flashcards ERROR:", err);
+  } catch (error) {
+    console.error("Flashcards ERROR:", error);
     return [];
   }
 }
 
 // ------------------------------------------------------------------
-// 🗓 STUDY PLAN
+// 🗓 Study Plan Generator
 // ------------------------------------------------------------------
 export async function generateStudyPlan(
   user: UserProfile,
@@ -230,29 +228,29 @@ ${JSON.stringify(user, null, 2)}
 
 Focus: ${focus}
 
-Return JSON:
+Return ONLY JSON like:
 [
-  { "day":"Day 1", "focusTopic":"...", "tasks":["..."] }
+  { "day": "Day 1", "focusTopic": "...", "tasks": ["..."] }
 ]
 `;
 
   try {
-    const result = await genAI
-      .getGenerativeModel({ model: MODEL_FAST })
-      .generateContent(prompt);
+    const model = genAI.getGenerativeModel({ model: MODEL_FAST });
+    const result = await model.generateContent(prompt);
 
     return JSON.parse(result.response.text());
-  } catch (err) {
-    console.error("StudyPlan ERROR:", err);
+  } catch (error) {
+    console.error("StudyPlan ERROR:", error);
     return [];
   }
 }
 
 // ------------------------------------------------------------------
-// 🔊 TEMP TTS — DISABLED (NO OPENAI IN BROWSER)
+// 🔊 TEMP TTS (Disabled safely)
 // ------------------------------------------------------------------
 export async function generateTTS(text: string) {
-  console.warn("TTS is currently disabled in frontend (no safe browser TTS).");
+  console.warn("TTS disabled (no browser-safe TTS).");
+
   return {
     text,
     transcript: text,
@@ -260,4 +258,4 @@ export async function generateTTS(text: string) {
     url: null,
     audio_mime: "audio/wav",
   };
-} 
+}

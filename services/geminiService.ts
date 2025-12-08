@@ -16,10 +16,10 @@ if (!apiKey) console.error("❌ Missing VITE_GEMINI_API_KEY");
 
 const genAI = new GoogleGenerativeAI(apiKey);
 
-// ⭐ Correct model names (latest stable)
-const MODEL_FAST = "gemini-1.5-flash-latest";
-const MODEL_REASONING = "gemini-1.5-pro-latest";
-const MODEL_TTS = "gemini-1.5-flash-8b"; // supports audio output
+// ⭐ FINAL CORRECT MODEL NAMES (v1beta)
+const MODEL_FAST = "gemini-1.5-flash";
+const MODEL_REASONING = "gemini-1.5-pro";
+const MODEL_TTS = "gemini-1.5-flash"; // flash supports AUDIO output
 
 // ---------------------------------------------------------
 // FILE HANDLING
@@ -36,7 +36,7 @@ function prepareFiles(files: UploadedFile[]) {
 }
 
 // ---------------------------------------------------------
-// MAIN CHATBOT (orchestrator)
+// MAIN CHAT ORCHESTRATOR
 // ---------------------------------------------------------
 export async function orchestrateRequest(
   query: string,
@@ -45,7 +45,8 @@ export async function orchestrateRequest(
   history: string
 ): Promise<AgentResponse> {
   const prompt = `
-You are Studify AI. Be clear, simple, and friendly.
+You are Studify AI.
+Be clear, simple, and helpful.
 
 User:
 ${JSON.stringify(user)}
@@ -54,11 +55,10 @@ History:
 ${history}
 
 Query: "${query}"
-  `;
+`;
 
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_REASONING });
-
     const result = await model.generateContent([
       ...prepareFiles(files),
       { text: prompt },
@@ -66,7 +66,7 @@ Query: "${query}"
 
     return { text: result.response.text(), sources: [] };
   } catch (err: any) {
-    console.error("Orchestrator ERROR:", err);
+    console.error("orchestrateRequest ERROR:", err);
     return { text: "Error: " + err.message, sources: [] };
   }
 }
@@ -74,9 +74,13 @@ Query: "${query}"
 // ---------------------------------------------------------
 // EXPLAIN TOPIC
 // ---------------------------------------------------------
-export async function explainTopic(topic: string, user: UserProfile, files: UploadedFile[]) {
+export async function explainTopic(
+  topic: string,
+  user: UserProfile,
+  files: UploadedFile[]
+): Promise<AgentResponse> {
   const prompt = `
-Explain "${topic}" very simply.
+Explain "${topic}" simply.
 
 Student:
 ${JSON.stringify(user, null, 2)}
@@ -86,12 +90,14 @@ Include:
 - Step-by-step explanation
 - Example
 - Summary
-  `;
+`;
 
   try {
-    const result = await genAI
-      .getGenerativeModel({ model: MODEL_REASONING })
-      .generateContent([...prepareFiles(files), { text: prompt }]);
+    const model = genAI.getGenerativeModel({ model: MODEL_REASONING });
+    const result = await model.generateContent([
+      ...prepareFiles(files),
+      { text: prompt },
+    ]);
 
     return { text: result.response.text(), sources: [] };
   } catch (err: any) {
@@ -112,11 +118,10 @@ Explain:
 - Step-by-step solution
 - Common mistakes
 - Summary
-  `;
+`;
 
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_REASONING });
-
     const result = await model.generateContent([
       ...prepareFiles(files),
       { text: prompt },
@@ -124,19 +129,22 @@ Explain:
 
     return { text: result.response.text(), sources: [] };
   } catch (err: any) {
-    console.error("SolveDoubt ERROR:", err);
+    console.error("solveDoubt ERROR:", err);
     return { text: "Error: " + err.message, sources: [] };
   }
 }
 
 // ---------------------------------------------------------
-// QUIZ
+// QUIZ GENERATOR
 // ---------------------------------------------------------
-export async function generateQuiz(topic: string, difficulty: string) {
+export async function generateQuiz(
+  topic: string,
+  difficulty: string
+): Promise<QuizQuestion[]> {
   const prompt = `
 Generate a ${difficulty} quiz for "${topic}".
-Return ONLY JSON.
-  `;
+Return JSON ONLY.
+`;
 
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_FAST });
@@ -152,16 +160,18 @@ Return ONLY JSON.
 // ---------------------------------------------------------
 // FLASHCARDS
 // ---------------------------------------------------------
-export async function generateFlashcards(topic: string, count = 5) {
+export async function generateFlashcards(
+  topic: string,
+  count = 5
+): Promise<Flashcard[]> {
   const prompt = `
 Generate ${count} flashcards for "${topic}".
-Return ONLY JSON.
-  `;
+Return JSON ONLY.
+`;
 
   try {
-    const result = await genAI
-      .getGenerativeModel({ model: MODEL_FAST })
-      .generateContent(prompt);
+    const model = genAI.getGenerativeModel({ model: MODEL_FAST });
+    const result = await model.generateContent(prompt);
 
     const cards = JSON.parse(result.response.text());
 
@@ -179,7 +189,10 @@ Return ONLY JSON.
 // ---------------------------------------------------------
 // STUDY PLAN
 // ---------------------------------------------------------
-export async function generateStudyPlan(user: UserProfile, focus: string) {
+export async function generateStudyPlan(
+  user: UserProfile,
+  focus: string
+): Promise<StudyPlanDay[]> {
   const prompt = `
 Create a 7-day study plan.
 
@@ -188,13 +201,12 @@ ${JSON.stringify(user)}
 
 Focus: ${focus}
 
-Return ONLY JSON.
-  `;
+Return JSON ONLY.
+`;
 
   try {
-    const result = await genAI
-      .getGenerativeModel({ model: MODEL_FAST })
-      .generateContent(prompt);
+    const model = genAI.getGenerativeModel({ model: MODEL_FAST });
+    const result = await model.generateContent(prompt);
 
     return JSON.parse(result.response.text());
   } catch (err) {
@@ -204,11 +216,11 @@ Return ONLY JSON.
 }
 
 // ---------------------------------------------------------
-// TTS (REAL AUDIO) — WORKS IN BROWSER
+// TTS (REAL GEMINI AUDIO) — WORKS IN BROWSER
 // ---------------------------------------------------------
 export async function generateTTS(text: string) {
   try {
-    const response = await fetch(
+    const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_TTS}:generateContent?key=${apiKey}`,
       {
         method: "POST",
@@ -225,26 +237,28 @@ export async function generateTTS(text: string) {
       }
     );
 
-    const json = await response.json();
-    console.log("TTS response:", json);
+    const json = await res.json();
+    console.log("TTS JSON:", json);
 
-    const base64 =
-      json?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    const base64 = json?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
 
     if (!base64) throw new Error("No audio returned from Gemini.");
 
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
-
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
     const blob = new Blob([bytes], { type: "audio/wav" });
     const url = URL.createObjectURL(blob);
 
-    return { text, transcript: text, url, blob, audio_mime: "audio/wav" };
-  } catch (err: any) {
+    return {
+      text,
+      transcript: text,
+      url,
+      blob,
+      audio_mime: "audio/wav",
+    };
+  } catch (err) {
     console.error("TTS ERROR:", err);
     return { text, transcript: text, url: null, blob: null };
   }

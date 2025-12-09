@@ -22,10 +22,11 @@ serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    const { text, voiceId = 'default' } = await req.json();
-    if (!text) throw new Error("No text provided");
+    const { text, prompt, voiceId = 'default' } = await req.json();
+    const inputText: string | undefined = text ?? prompt;
+    if (!inputText) throw new Error("No text provided");
 
-    const textHash = await hashText(text + voiceId);
+    const textHash = await hashText(inputText + voiceId);
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -55,7 +56,7 @@ serve(async (req: Request) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            contents: { parts: [{ text }] },
+            contents: { parts: [{ text: inputText }] },
             config: { 
                 responseModalities: ["AUDIO"],
                 speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' }}}

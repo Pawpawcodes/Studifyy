@@ -29,17 +29,17 @@ export const TestSuite: React.FC = () => {
       const ttsResponse = await generateTTS("Testing system audio latency.");
       const ttsEnd = performance.now();
       
-      if (ttsResponse.audio_base64 && ttsResponse.audio_mime === 'audio/wav') {
+      if (ttsResponse.url) {
         results.push({ 
           test: "TTS Generation", 
           status: "pass", 
-          details: { latencyMs: Math.round(ttsEnd - ttsStart), mime: ttsResponse.audio_mime } 
+          details: { latencyMs: Math.round(ttsEnd - ttsStart), url: ttsResponse.url } 
         });
       } else {
         results.push({ 
           test: "TTS Generation", 
           status: "fail", 
-          details: { response: "Invalid Schema or Missing Audio" } 
+          details: { response: "Missing audio URL from generate-tts" } 
         });
       }
 

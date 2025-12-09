@@ -7,7 +7,6 @@ import {
   StudyPlanDay,
   AgentResponse,
 } from "../types";
-import { supabase } from "../supabaseClientFrontend";
 
 // ---------------------------------------------------------
 // INIT GEMINI
@@ -16,6 +15,20 @@ const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 if (!apiKey) console.error("❌ Missing VITE_GEMINI_API_KEY");
 
 const genAI = new GoogleGenerativeAI(apiKey);
+
+// Derive the new Edge Functions host (project-ref.functions.supabase.co)
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+let FUNCTIONS_TTS_URL = "https://wkefepwnztesbjdyqybp.functions.supabase.co/generate-tts";
+if (supabaseUrl) {
+  const match = supabaseUrl.match(/^https:\/\/([^.]+)\.supabase\.co/i);
+  const ref = match?.[1];
+  if (ref) {
+    FUNCTIONS_TTS_URL = `https://${ref}.functions.supabase.co/generate-tts`;
+  } else {
+    // Fallback: swap the domain if the URL looks standard
+    FUNCTIONS_TTS_URL = supabaseUrl.replace(".supabase.co", ".functions.supabase.co") + "/generate-tts";
+  }
+}
 
 // Current stable model names for this app
 // NOTE: 1.5 models are deprecated on the v1beta API, which is why
@@ -211,14 +224,9 @@ Return ONLY JSON.
 // ---------------------------------------------------------
 // TTS (Supabase Edge Function wrapper)
 // ---------------------------------------------------------
-// In production we DO NOT call the Gemini API with the browser key
-// for audio, because:
-//  - the v1beta text endpoint rejects `responseMimeType: "audio/ogg"`
-//  - audio output is better handled on the server and cached
-// Instead we call the `generate-tts` Supabase Edge Function, which:
-//  - talks to `gemini-2.5-flash-preview-tts`
-//  - stores the result in the `tts` bucket
-//  - returns a public MP3 URL.
+// We call the modern Functions endpoint directly:
+//   https://<project-ref>.functions.supabase.co/generate-tts
+// with JSON { prompt: "..." }.
 export async function generateTTS(text: string) {
   try {
     const trimmed = text?.trim();
@@ -226,22 +234,27 @@ export async function generateTTS(text: string) {
       return { text: "", transcript: "", url: null, blob: null };
     }
 
-    const { data, error } = await supabase.functions.invoke("generate-tts", {
-      body: { text: trimmed },
+    const response = await fetch(FUNCTIONS_TTS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: trimmed }),
     });
 
-    if (error) throw error;
+    if (!response.ok) {
+      const msg = await response.text().catch(() => "");
+      throw new Error(`generate-tts HTTP ${response.status}: ${msg}`);
+    }
 
+    const data: any = await response.json();
     const url: string | undefined = data?.url;
     if (!url) throw new Error("No audio URL returned from generate-tts function");
 
-    // Let the browser stream the MP3 directly from Supabase Storage.
     return {
       text: trimmed,
       transcript: trimmed,
       url,
       blob: null,
-      audio_mime: "audio/mpeg",
+      audio_mime: data?.mimeType || "audio/mpeg",
       audio_base64: null,
     };
   } catch (err) {

@@ -83,13 +83,35 @@ export const fetchUserProfile = async (userId: string): Promise<UserProfile | nu
   };
 };
 
+// Thin wrapper over the same `generate-tts` edge function used by
+// `generateTTS` in geminiService, but returning only the URL.
 export const fetchTTS = async (text: string): Promise<string | null> => {
   try {
-    const { data, error } = await supabase.functions.invoke('generate-tts', {
-      body: { text }
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+    let endpoint = "https://wkefepwnztesbjdyqybp.functions.supabase.co/generate-tts";
+    if (supabaseUrl) {
+      const match = supabaseUrl.match(/^https:\/\/([^.]+)\.supabase\.co/i);
+      const ref = match?.[1];
+      if (ref) {
+        endpoint = `https://${ref}.functions.supabase.co/generate-tts`;
+      } else {
+        endpoint = supabaseUrl.replace(".supabase.co", ".functions.supabase.co") + "/generate-tts";
+      }
+    }
+
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: text }),
     });
-    if (error) throw error;
-    return data.url;
+
+    if (!resp.ok) {
+      const msg = await resp.text().catch(() => '');
+      throw new Error(`generate-tts HTTP ${resp.status}: ${msg}`);
+    }
+
+    const json: any = await resp.json();
+    return json?.url ?? null;
   } catch (e) {
     console.error('TTS Fetch Error:', e);
     return null;

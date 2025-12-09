@@ -226,7 +226,7 @@ Return ONLY JSON.
 // ---------------------------------------------------------
 // We call the modern Functions endpoint directly:
 //   https://<project-ref>.functions.supabase.co/generate-tts
-// with JSON { prompt: "..." }.
+// with JSON { text: "..." } and the anon key in the Authorization header.
 export async function generateTTS(text: string) {
   try {
     const trimmed = text?.trim();
@@ -236,8 +236,11 @@ export async function generateTTS(text: string) {
 
     const response = await fetch(FUNCTIONS_TTS_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: trimmed }),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ text: trimmed }),
     });
 
     if (!response.ok) {

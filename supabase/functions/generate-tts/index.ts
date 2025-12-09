@@ -23,10 +23,13 @@ serve(async (req: Request) => {
     const apiKey = Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
 
+    // 3) Use Gemini 1.5 Flash Speech model
     const url =
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-speech:generateContent?key=" +
+      "https://generativelanguage.googleapis.com/v1beta/models/" +
+      "gemini-1.5-flash-speech:generateContent?key=" +
       apiKey;
 
+    // 2) Request body EXACTLY as required
     const geminiResp = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -38,7 +41,7 @@ serve(async (req: Request) => {
           },
         ],
         generationConfig: {
-          outputMimeType: "audio/mp3",
+          output_mime_type: "audio/mp3",
         },
       }),
     });
@@ -46,11 +49,13 @@ serve(async (req: Request) => {
     const result = await geminiResp.json();
     if (!geminiResp.ok) throw new Error(JSON.stringify(result));
 
+    // 4) Extract audio from result.response.candidates[0].content.parts[0].inlineData
     const audio =
       result.response?.candidates?.[0]?.content?.parts?.[0]?.inlineData;
 
     if (!audio?.data) throw new Error("No audio returned from Gemini");
 
+    // 5) Return { audio }
     return new Response(JSON.stringify({ audio }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

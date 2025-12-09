@@ -7,6 +7,7 @@ import {
   StudyPlanDay,
   AgentResponse,
 } from "../types";
+import { supabase } from "../supabaseClientFrontend";
 
 // ---------------------------------------------------------
 // INIT GEMINI
@@ -16,13 +17,17 @@ if (!apiKey) console.error("❌ Missing VITE_GEMINI_API_KEY");
 
 const genAI = new GoogleGenerativeAI(apiKey);
 
-// Current stable model names
-// - gemini-1.5-flash: fast, great for most tasks + JSON
-// - gemini-1.5-pro: deeper reasoning
-// - gemini-1.5-flash (again) is also used for TTS with responseMimeType="audio/ogg"
-const MODEL_FAST = "gemini-1.5-flash";
-const MODEL_REASONING = "gemini-1.5-pro";
-const MODEL_TTS = "gemini-1.5-flash";
+// Current stable model names for this app
+// NOTE: 1.5 models are deprecated on the v1beta API, which is why
+// you were seeing 404s in production. We now use 2.5 models.
+// - gemini-2.5-flash: fast, strong general model
+// - gemini-2.5-flash again for "reasoning" tasks in this app
+const MODEL_FAST = "gemini-2.5-flash";
+const MODEL_REASONING = "gemini-2.5-flash";
+// TTS is served via a Supabase Edge Function that calls
+// the dedicated TTS model `gemini-2.5-flash-preview-tts`.
+// This constant is kept for documentation only.
+const MODEL_TTS = "gemini-2.5-flash-preview-tts";
 
 // ---------------------------------------------------------
 // FILE HANDLING
@@ -204,40 +209,40 @@ Return ONLY JSON.
 }
 
 // ---------------------------------------------------------
-// TTS (SDK with audio/ogg via gemini-1.5-flash)
+// TTS (Supabase Edge Function wrapper)
 // ---------------------------------------------------------
+// In production we DO NOT call the Gemini API with the browser key
+// for audio, because:
+//  - the v1beta text endpoint rejects `responseMimeType: "audio/ogg"`
+//  - audio output is better handled on the server and cached
+// Instead we call the `generate-tts` Supabase Edge Function, which:
+//  - talks to `gemini-2.5-flash-preview-tts`
+//  - stores the result in the `tts` bucket
+//  - returns a public MP3 URL.
 export async function generateTTS(text: string) {
   try {
-    const model = genAI.getGenerativeModel({ model: MODEL_TTS });
+    const trimmed = text?.trim();
+    if (!trimmed) {
+      return { text: "", transcript: "", url: null, blob: null };
+    }
 
-    const result = await model.generateContent({
-      contents: [{
-        role: "user",
-        parts: [{ text }],
-      }],
-      generationConfig: {
-        // Binary audio back from Gemini
-        responseMimeType: "audio/ogg",
-      },
+    const { data, error } = await supabase.functions.invoke("generate-tts", {
+      body: { text: trimmed },
     });
 
-    const part: any = result.response.candidates?.[0]?.content?.parts?.[0];
-    const base64: string | undefined = part?.inlineData?.data;
-    const mimeType: string = part?.inlineData?.mimeType || "audio/ogg";
+    if (error) throw error;
 
-    if (!base64) throw new Error("No audio returned from Gemini TTS");
+    const url: string | undefined = data?.url;
+    if (!url) throw new Error("No audio URL returned from generate-tts function");
 
-    const byteArray = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-    const blob = new Blob([byteArray], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-
+    // Let the browser stream the MP3 directly from Supabase Storage.
     return {
-      text,
-      transcript: text,
+      text: trimmed,
+      transcript: trimmed,
       url,
-      blob,
-      audio_mime: mimeType,
-      audio_base64: base64,
+      blob: null,
+      audio_mime: "audio/mpeg",
+      audio_base64: null,
     };
   } catch (err) {
     console.error("TTS ERROR:", err);

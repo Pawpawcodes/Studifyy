@@ -10,7 +10,9 @@ const Login: React.FC = () => {
 
   useEffect(() => {
     if (session) {
-      navigate("/");
+      // After a successful Supabase SIGNED_IN event, push the
+      // user into the main authenticated dashboard area.
+      navigate("/dashboard");
     }
   }, [session, navigate]);
 

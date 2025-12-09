@@ -8,6 +8,7 @@ import { UploadedFile, GroundingSource } from '../types';
 import ReactMarkdown from 'react-markdown';
 import { solveDoubt } from '../services/geminiService';
 import { TTSPlayer } from '../components/TTSPlayer';
+import { useTTS } from '../context/TTSProvider';
 
 export const DoubtPage: React.FC = () => {
   const { addFile, files } = useStore();
@@ -18,6 +19,7 @@ export const DoubtPage: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isSolving, setIsSolving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { play } = useTTS();
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0] && session?.user) {
@@ -55,6 +57,11 @@ export const DoubtPage: React.FC = () => {
 
     setAnswer(response.text);
     setSources(response.sources || []);
+
+    if (response.text) {
+      play(response.text);
+    }
+
     setIsSolving(false);
   };
 

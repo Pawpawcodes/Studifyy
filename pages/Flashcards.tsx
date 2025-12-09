@@ -3,6 +3,7 @@ import { useStore } from '../context/StoreContext';
 import { generateFlashcards } from '../services/geminiService';
 import { RefreshCcw, ThumbsUp, ThumbsDown, Plus } from 'lucide-react';
 import { TTSPlayer } from '../components/TTSPlayer';
+import { useTTS } from '../context/TTSProvider';
 
 export const FlashcardsPage: React.FC = () => {
   const { flashcards, addFlashcards, recordPerformance } = useStore();
@@ -10,6 +11,7 @@ export const FlashcardsPage: React.FC = () => {
   const [isFlipped, setIsFlipped] = useState(false);
   const [topicInput, setTopicInput] = useState('');
   const [generating, setGenerating] = useState(false);
+  const { play } = useTTS();
 
   const activeDeck = flashcards.length > 0 ? flashcards : [];
 
@@ -18,6 +20,12 @@ export const FlashcardsPage: React.FC = () => {
     setGenerating(true);
     const newCards = await generateFlashcards(topicInput);
     addFlashcards(newCards);
+
+    if (newCards && newCards.length > 0 && newCards[0].front) {
+      // Read the first generated question aloud
+      play(newCards[0].front);
+    }
+
     setGenerating(false);
     setTopicInput('');
   };

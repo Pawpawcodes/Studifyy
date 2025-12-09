@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 
 import { StoreProvider, useStore } from './context/StoreContext';
 import { AudioProvider } from './context/AudioContext';
+import { TTSProvider } from './context/TTSProvider';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 import { Layout } from './components/Layout';
@@ -56,12 +57,18 @@ const AppRoutes: React.FC = () => {
       {/* Public Landing (only if not logged in) */}
       <Route
         path="/landing"
-        element={!session ? <LandingPage /> : <Navigate to="/" replace />}
+        element={!session ? <LandingPage /> : <Navigate to="/dashboard" replace />}
       />
 
-      {/* Protected Routes */}
+      {/* Root: redirect based on auth state */}
       <Route
         path="/"
+        element={<Navigate to={session ? '/dashboard' : '/landing'} replace />}
+      />
+
+      {/* Protected Dashboard */}
+      <Route
+        path="/dashboard"
         element={
           <ProtectedRoute>
             <Layout>
@@ -154,7 +161,7 @@ const AppRoutes: React.FC = () => {
       {/* Catch-all */}
       <Route
         path="*"
-        element={<Navigate to={session ? '/' : '/landing'} replace />}
+        element={<Navigate to={session ? '/dashboard' : '/landing'} replace />}
       />
     </Routes>
   );
@@ -165,9 +172,11 @@ const App: React.FC = () => {
     <AuthProvider>
       <StoreProvider>
         <AudioProvider>
-          <AuthBar />
-          <AppRoutes />
-          <ChatWidget />
+          <TTSProvider>
+            <AuthBar />
+            <AppRoutes />
+            <ChatWidget />
+          </TTSProvider>
         </AudioProvider>
       </StoreProvider>
     </AuthProvider>

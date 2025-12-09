@@ -16,11 +16,12 @@ if (!apiKey) console.error("❌ Missing VITE_GEMINI_API_KEY");
 
 const genAI = new GoogleGenerativeAI(apiKey);
 
-// ✔ Correct model names for SDK (text generation)
-const MODEL_FAST = "gemini-1.5-flash-001";
-const MODEL_REASONING = "gemini-1.5-pro-001";
-
-// ✔ Correct TTS model (REST only)
+// Current stable model names
+// - gemini-1.5-flash: fast, great for most tasks + JSON
+// - gemini-1.5-pro: deeper reasoning
+// - gemini-1.5-flash (again) is also used for TTS with responseMimeType="audio/ogg"
+const MODEL_FAST = "gemini-1.5-flash";
+const MODEL_REASONING = "gemini-1.5-pro";
 const MODEL_TTS = "gemini-1.5-flash";
 
 // ---------------------------------------------------------
@@ -90,7 +91,7 @@ Include:
     const model = genAI.getGenerativeModel({ model: MODEL_REASONING });
     const result = await model.generateContent([
       ...prepareFiles(files),
-      { text: prompt }
+      { text: prompt },
     ]);
 
     return { text: result.response.text(), sources: [] };
@@ -117,7 +118,7 @@ Explain:
     const model = genAI.getGenerativeModel({ model: MODEL_REASONING });
     const result = await model.generateContent([
       ...prepareFiles(files),
-      { text: prompt }
+      { text: prompt },
     ]);
 
     return { text: result.response.text(), sources: [] };
@@ -137,7 +138,10 @@ Return ONLY JSON.
 
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_FAST });
-    const result = await model.generateContent([{ text: prompt }]);
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json" },
+    });
     return JSON.parse(result.response.text());
   } catch (err) {
     console.error("QUIZ ERROR:", err);
@@ -156,7 +160,10 @@ Return ONLY JSON.
 
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_FAST });
-    const result = await model.generateContent([{ text: prompt }]);
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json" },
+    });
 
     const cards = JSON.parse(result.response.text());
     return cards.map((c: any, i: number) => ({
@@ -186,7 +193,10 @@ Return ONLY JSON.
 
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_FAST });
-    const result = await model.generateContent([{ text: prompt }]);
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json" },
+    });
     return JSON.parse(result.response.text());
   } catch (err) {
     return [];
@@ -194,34 +204,50 @@ Return ONLY JSON.
 }
 
 // ---------------------------------------------------------
-// TTS (REST API using WAV base64)
+// TTS (SDK with audio/ogg via gemini-1.5-flash)
 // ---------------------------------------------------------
 export async function generateTTS(text: string) {
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_TTS}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text }] }],
-          generationConfig: { responseModalities: ["AUDIO"] }
-        }),
-      }
-    );
+    const model = genAI.getGenerativeModel({ model: MODEL_TTS });
 
-    const json = await response.json();
-    const base64 = json?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    const result = await model.generateContent({
+      contents: [{
+        role: "user",
+        parts: [{ text }],
+      }],
+      generationConfig: {
+        // Binary audio back from Gemini
+        responseMimeType: "audio/ogg",
+      },
+    });
 
-    if (!base64) throw new Error("No audio returned");
+    const part: any = result.response.candidates?.[0]?.content?.parts?.[0];
+    const base64: string | undefined = part?.inlineData?.data;
+    const mimeType: string = part?.inlineData?.mimeType || "audio/ogg";
 
-    const byteArray = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-    const blob = new Blob([byteArray], { type: "audio/wav" });
+    if (!base64) throw new Error("No audio returned from Gemini TTS");
+
+    const byteArray = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    const blob = new Blob([byteArray], { type: mimeType });
     const url = URL.createObjectURL(blob);
 
-    return { text, transcript: text, url, blob, audio_mime: "audio/wav" };
+    return {
+      text,
+      transcript: text,
+      url,
+      blob,
+      audio_mime: mimeType,
+      audio_base64: base64,
+    };
   } catch (err) {
     console.error("TTS ERROR:", err);
-    return { text, transcript: text, url: null, blob: null };
+    return {
+      text,
+      transcript: text,
+      url: null,
+      blob: null,
+      audio_mime: undefined,
+      audio_base64: null,
+    };
   }
 }

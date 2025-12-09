@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Session } from '@supabase/supabase-js';
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../supabaseClientFrontend';
 
 interface AuthContextType {
@@ -18,37 +18,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     // Initial session fetch
     supabase.auth.getSession().then(({ data, error }) => {
-      if (error) console.error('Error getting session:', error);
+      console.log('🟦 getSession() result:', { data, error });
+      if (error) console.error('❌ Error getting session:', error);
       setSession(data.session);
       setLoading(false);
     });
 
     // Auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
-      setLoading(false);
-    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, newSession) => {
+        console.log('🟧 onAuthStateChange event:', event);
+        console.log('🟧 onAuthStateChange session:', newSession);
+        setSession(newSession);
+        setLoading(false);
+      }
+    );
 
     return () => subscription.unsubscribe();
   }, []);
 
   const googleSignIn = async () => {
-    /**
-     * FUTURE-PROOF REDIRECT
-     * Works regardless of:
-     *  - New Netlify project
-     *  - Domain changes
-     *  - Localhost vs Production
-     * 
-     * HashRouter requires "/#/login"
-     */
-    const redirectTo = `${window.location.origin}/#/login`;
-
+    // Use a dedicated callback route so Supabase can complete the OAuth flow
+    // and let the SPA router handle post-login navigation.
+    const redirectTo = `${window.location.origin}/auth/v1/callback`;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo },
     });
-
     if (error) console.error('Google Sign-in Error:', error);
   };
 

@@ -5,6 +5,7 @@ import { Send, Loader2, Link as LinkIcon, ExternalLink } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { GroundingSource } from '../types';
 import { TTSPlayer } from '../components/TTSPlayer';
+import { useTTS } from '../context/TTSProvider';
 
 export const ExplainPage: React.FC = () => {
   const [topic, setTopic] = useState('');
@@ -12,6 +13,7 @@ export const ExplainPage: React.FC = () => {
   const [sources, setSources] = useState<GroundingSource[]>([]);
   const [loading, setLoading] = useState(false);
   const { user, files } = useStore();
+  const { play } = useTTS();
 
   const handleExplain = async () => {
     if (!topic.trim()) return;
@@ -23,6 +25,12 @@ export const ExplainPage: React.FC = () => {
     const result = await explainTopic(topic, user!, files);
     setExplanation(result.text);
     setSources(result.sources || []);
+
+    if (result.text) {
+      // Fire global TTS so explanation can be heard even without the inline player
+      play(result.text);
+    }
+
     setLoading(false);
   };
 

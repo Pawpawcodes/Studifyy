@@ -4,6 +4,7 @@ import { useStore } from '../context/StoreContext';
 import { QuizQuestion } from '../types';
 import { CheckCircle, Play, RefreshCw, Loader2, Brain } from 'lucide-react';
 import { TTSPlayer } from '../components/TTSPlayer';
+import { useTTS } from '../context/TTSProvider';
 
 export const QuizPage: React.FC = () => {
   const [topic, setTopic] = useState('');
@@ -14,6 +15,7 @@ export const QuizPage: React.FC = () => {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const { addQuiz, recordPerformance } = useStore();
+  const { play } = useTTS();
 
   const handleStartQuiz = async () => {
     if (!topic) return;
@@ -21,6 +23,12 @@ export const QuizPage: React.FC = () => {
     // Simulate difficulty tracking
     const quizData = await generateQuiz(topic, 'Medium');
     setQuestions(quizData);
+
+    if (quizData && quizData.length > 0 && quizData[0].question) {
+      // Read the first question aloud when quiz starts
+      play(quizData[0].question);
+    }
+
     setLoading(false);
     setCurrentQIndex(0);
     setScore(0);

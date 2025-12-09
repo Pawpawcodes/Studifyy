@@ -1,75 +1,53 @@
 // @ts-ignore
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-// @ts-ignore
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 
 declare const Deno: any;
 
+// Basic CORS headers for browser clients
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-async function hashText(text: string) {
-  const msgUint8 = new TextEncoder().encode(text);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
 serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
   try {
-    const { text, prompt, voiceId = 'default' } = await req.json();
+    const { text, prompt } = await req.json();
     const inputText: string | undefined = text ?? prompt;
-    if (!inputText) throw new Error("No text provided");
 
-    const textHash = await hashText(inputText + voiceId);
-
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
-    // 1. Check Cache
-    const { data: cached } = await supabase
-      .from('tts_cache')
-      .select('storage_path')
-      .eq('text_hash', textHash)
-      .eq('voice_id', voiceId)
-      .single();
-
-    if (cached) {
-      const { data } = supabase.storage.from('tts').getPublicUrl(cached.storage_path);
-      return new Response(
-        JSON.stringify({ url: data.publicUrl, cached: true, audio: null }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        },
-      );
+    if (!inputText) {
+      throw new Error("No text provided");
     }
 
-    // 2. Generate Audio (Gemini REST API)
-    const apiKey = Deno.env.get('GEMINI_API_KEY');
-    if (!apiKey) throw new Error('Missing GEMINI_API_KEY');
+    // Read API key from environment (no hardcoded keys)
+    const apiKey = Deno.env.get("GEMINI_API_KEY");
+    if (!apiKey) {
+      throw new Error("Missing GEMINI_API_KEY");
+    }
 
-    // Use Gemini 1.5 Flash with audio/mp3 response
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+    // Call Gemini 1.5 Flash Speech model via REST API
+    const url =
+      "https://generativelanguage.googleapis.com/v1beta/models/" +
+      "gemini-1.5-flash-speech:generateContent?key=" +
+      apiKey;
 
     const geminiResp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [
           {
-            role: 'user',
+            role: "user",
             parts: [{ text: inputText }],
           },
         ],
         generationConfig: {
-          responseMimeType: 'audio/mp3',
+          responseMimeType: "audio/mp3",
         },
       }),
     });
@@ -79,52 +57,34 @@ serve(async (req: Request) => {
       throw new Error(`Gemini API Error: ${errText}`);
     }
 
-    const geminiJson = await geminiResp.json();
-    const inlineAudio = geminiJson.candidates?.[0]?.content?.parts?.[0]?.inlineData;
-    const base64Audio = inlineAudio?.data;
+    const result = await geminiResp.json();
 
-    if (!inlineAudio || !base64Audio) throw new Error('No audio generated from Gemini');
+    // Extract audio as inlineData, exactly from
+    // result.response.candidates[0].content.parts[0].inlineData
+    const audio =
+      result.response?.candidates?.[0]?.content?.parts?.[0]?.inlineData ?? null;
 
-    // 3. Convert Base64 to Bytes
-    const binaryString = atob(base64Audio);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-    
-    // 4. Upload to Storage
-    const fileName = `${textHash}.mp3`;
-    
-    const { error: uploadError } = await supabase.storage
-      .from('tts')
-      .upload(fileName, bytes, { contentType: 'audio/mp3', upsert: true });
+    if (!audio || !audio.data) {
+      throw new Error("No audio generated from Gemini");
+    }
 
-    if (uploadError) throw uploadError;
-
-    // 5. Save Cache Entry
-    await supabase.from('tts_cache').insert({
-      text_hash: textHash,
-      voice_id: voiceId,
-      storage_path: fileName
+    // Return just { audio } as requested
+    return new Response(JSON.stringify({ audio }), {
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json",
+      },
     });
-
-    const { data: publicUrlData } = supabase.storage.from('tts').getPublicUrl(fileName);
-
-    // Return both the public URL (used by the frontend today) and the
-    // raw inlineData-style object expected by some clients.
-    const audio = {
-      mimeType: 'audio/mp3',
-      data: base64Audio,
-    };
-
+  } catch (error: any) {
     return new Response(
-      JSON.stringify({ url: publicUrlData.publicUrl, cached: false, audio }),
+      JSON.stringify({ error: error?.message ?? "Unknown error" }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
       },
     );
-
-  } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
   }
 });

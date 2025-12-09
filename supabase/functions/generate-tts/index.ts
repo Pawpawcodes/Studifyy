@@ -3,7 +3,6 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 declare const Deno: any;
 
-// Basic CORS headers for browser clients
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -11,29 +10,21 @@ const corsHeaders = {
 };
 
 serve(async (req: Request) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
     const { text, prompt } = await req.json();
-    const inputText: string | undefined = text ?? prompt;
+    const inputText = text ?? prompt;
 
-    if (!inputText) {
-      throw new Error("No text provided");
-    }
+    if (!inputText) throw new Error("No text provided");
 
-    // Read API key from environment (no hardcoded keys)
     const apiKey = Deno.env.get("GEMINI_API_KEY");
-    if (!apiKey) {
-      throw new Error("Missing GEMINI_API_KEY");
-    }
+    if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
 
-    // Call Gemini 1.5 Flash Speech model via REST API
     const url =
-      "https://generativelanguage.googleapis.com/v1beta/models/" +
-      "gemini-1.5-flash-speech:generateContent?key=" +
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-speech:generateContent?key=" +
       apiKey;
 
     const geminiResp = await fetch(url, {
@@ -47,44 +38,26 @@ serve(async (req: Request) => {
           },
         ],
         generationConfig: {
-          responseMimeType: "audio/mp3",
+          outputMimeType: "audio/mp3",
         },
       }),
     });
 
-    if (!geminiResp.ok) {
-      const errText = await geminiResp.text();
-      throw new Error(`Gemini API Error: ${errText}`);
-    }
-
     const result = await geminiResp.json();
+    if (!geminiResp.ok) throw new Error(JSON.stringify(result));
 
-    // Extract audio as inlineData, exactly from
-    // result.response.candidates[0].content.parts[0].inlineData
     const audio =
-      result.response?.candidates?.[0]?.content?.parts?.[0]?.inlineData ?? null;
+      result.response?.candidates?.[0]?.content?.parts?.[0]?.inlineData;
 
-    if (!audio || !audio.data) {
-      throw new Error("No audio generated from Gemini");
-    }
+    if (!audio?.data) throw new Error("No audio returned from Gemini");
 
-    // Return just { audio } as requested
     return new Response(JSON.stringify({ audio }), {
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json",
-      },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (error: any) {
-    return new Response(
-      JSON.stringify({ error: error?.message ?? "Unknown error" }),
-      {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      },
-    );
+  } catch (err: any) {
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });

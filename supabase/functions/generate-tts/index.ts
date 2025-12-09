@@ -43,36 +43,47 @@ serve(async (req: Request) => {
 
     if (cached) {
       const { data } = supabase.storage.from('tts').getPublicUrl(cached.storage_path);
-      return new Response(JSON.stringify({ url: data.publicUrl, cached: true }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      return new Response(
+        JSON.stringify({ url: data.publicUrl, cached: true, audio: null }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      );
     }
 
     // 2. Generate Audio (Gemini REST API)
     const apiKey = Deno.env.get('GEMINI_API_KEY');
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
-    
+    if (!apiKey) throw new Error('Missing GEMINI_API_KEY');
+
+    // Use Gemini 1.5 Flash with audio/mp3 response
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+
     const geminiResp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            contents: { parts: [{ text: inputText }] },
-            config: { 
-                responseModalities: ["AUDIO"],
-                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' }}}
-            }
-        })
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: inputText }],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: 'audio/mp3',
+        },
+      }),
     });
-    
+
     if (!geminiResp.ok) {
-        const errText = await geminiResp.text();
-        throw new Error(`Gemini API Error: ${errText}`);
+      const errText = await geminiResp.text();
+      throw new Error(`Gemini API Error: ${errText}`);
     }
 
     const geminiJson = await geminiResp.json();
-    const base64Audio = geminiJson.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    const inlineAudio = geminiJson.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+    const base64Audio = inlineAudio?.data;
 
-    if (!base64Audio) throw new Error("No audio generated from Gemini");
+    if (!inlineAudio || !base64Audio) throw new Error('No audio generated from Gemini');
 
     // 3. Convert Base64 to Bytes
     const binaryString = atob(base64Audio);
@@ -97,9 +108,19 @@ serve(async (req: Request) => {
 
     const { data: publicUrlData } = supabase.storage.from('tts').getPublicUrl(fileName);
 
-    return new Response(JSON.stringify({ url: publicUrlData.publicUrl, cached: false }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    // Return both the public URL (used by the frontend today) and the
+    // raw inlineData-style object expected by some clients.
+    const audio = {
+      mimeType: 'audio/mp3',
+      data: base64Audio,
+    };
+
+    return new Response(
+      JSON.stringify({ url: publicUrlData.publicUrl, cached: false, audio }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    );
 
   } catch (error: any) {
     return new Response(JSON.stringify({ error: error.message }), {

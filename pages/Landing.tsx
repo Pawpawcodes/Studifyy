@@ -1,15 +1,14 @@
 import React from 'react';
 import { ArrowRight, Brain, Zap, Layers } from 'lucide-react';
-import { useStore } from '../context/StoreContext';
+import { useNavigate } from 'react-router-dom';
 import { TTSPlayer } from '../components/TTSPlayer';
 
 export const LandingPage: React.FC = () => {
-  const { completeOnboarding } = useStore();
+  const navigate = useNavigate();
 
-  // For this demo, we skip auth and go straight to onboarding
+  // Main CTA: send the user into the auth flow
   const handleGetStarted = () => {
-    // In a real app, this would route to /signup
-    // Here we just trigger the state to show Onboarding inside App.tsx
+    navigate('/login');
   };
 
   return (

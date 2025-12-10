@@ -12,26 +12,13 @@ export function AuthBar() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  const signInWithGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-    });
-    if (error) console.error(error);
-  };
-
   const signOut = async () => {
     await supabase.auth.signOut();
   };
 
+  // When logged out we don't show any extra auth button.
   if (!user) {
-    return (
-      <button 
-        onClick={signInWithGoogle} 
-        className="px-4 py-2 rounded-lg bg-blue-600 text-white"
-      >
-        Sign in with Google
-      </button>
-    );
+    return null;
   }
 
   return (

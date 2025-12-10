@@ -1,25 +1,25 @@
-import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import React from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
 
-import { StoreProvider, useStore } from './context/StoreContext';
-import { AudioProvider } from './context/AudioContext';
-import { TTSProvider } from './context/TTSProvider';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { StoreProvider, useStore } from "./context/StoreContext";
+import { AudioProvider } from "./context/AudioContext";
+import { TTSProvider } from "./context/TTSProvider";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 
-import { Layout } from './components/Layout';
-import { LandingPage } from './pages/Landing';
-import { Onboarding } from './pages/Onboarding';
-import { Dashboard } from './pages/Dashboard';
-import { ExplainPage } from './pages/Explain';
-import { QuizPage } from './pages/Quiz';
-import { FlashcardsPage } from './pages/Flashcards';
-import { DoubtPage } from './pages/Doubt';
-import { PlannerPage } from './pages/Planner';
-import { SettingsPage } from './pages/Settings';
-import Login from './pages/Login';
-import { ChatWidget } from './components/ChatWidget';
-import { TestSuite } from './pages/TestSuite';
-import { AuthBar } from './components/AuthBar';
+import { Layout } from "./components/Layout";
+import { LandingPage } from "./pages/Landing";
+import { Onboarding } from "./pages/Onboarding";
+import { Dashboard } from "./pages/Dashboard";
+import { ExplainPage } from "./pages/Explain";
+import { QuizPage } from "./pages/Quiz";
+import { FlashcardsPage } from "./pages/Flashcards";
+import { DoubtPage } from "./pages/Doubt";
+import { PlannerPage } from "./pages/Planner";
+import { SettingsPage } from "./pages/Settings";
+import Login from "./pages/Login";
+import { ChatWidget } from "./components/ChatWidget";
+import { TestSuite } from "./pages/TestSuite";
+import { AuthBar } from "./components/AuthBar";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { session, loading } = useAuth();
@@ -57,13 +57,15 @@ const AppRoutes: React.FC = () => {
       {/* Public Landing (only if not logged in) */}
       <Route
         path="/landing"
-        element={!session ? <LandingPage /> : <Navigate to="/dashboard" replace />}
+        element={
+          !session ? <LandingPage /> : <Navigate to="/dashboard" replace />
+        }
       />
 
       {/* Root: redirect based on auth state */}
       <Route
         path="/"
-        element={<Navigate to={session ? '/dashboard' : '/landing'} replace />}
+        element={<Navigate to={session ? "/dashboard" : "/landing"} replace />}
       />
 
       {/* Protected Dashboard */}
@@ -161,7 +163,7 @@ const AppRoutes: React.FC = () => {
       {/* Catch-all */}
       <Route
         path="*"
-        element={<Navigate to={session ? '/dashboard' : '/landing'} replace />}
+        element={<Navigate to={session ? "/dashboard" : "/landing"} replace />}
       />
     </Routes>
   );

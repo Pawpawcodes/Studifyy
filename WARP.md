@@ -112,10 +112,10 @@ This is a Vite + React TypeScript single-page app that combines Google Gemini an
   - Renders AI responses with `ReactMarkdown` and optional source links.
   - Integrates browser speech recognition (where available) for voice input and uses `TTSPlayer` to read AI messages aloud.
 - `context/AudioContext.tsx` implements a single global `HTMLAudioElement` instance and exposes `play`, `pause`, `resume`, and `stop`, along with `currentId` and `isPlaying`.
-- `components/TTSPlayer.tsx` (and a very similar implementation under `context/TTSPlayer.tsx`) wraps `generateTTS` + `AudioContext`:
-  - Generates audio once per text snippet and reuses the URL for subsequent plays.
-  - Supports both a minimal icon-only control and a fuller control bar with stop and download options.
-  - Honors `autoPlay` props and the user’s `autoPlayAudio` preference from the store to optionally auto-start audio.
+- `components/TTSPlayer.tsx` wraps `generateTTS` + `AudioContext`:
+- - Generates audio once per text snippet and reuses the URL for subsequent plays.
+- - Supports both a minimal icon-only control and a fuller control bar with stop and download options.
+- - Honors `autoPlay` props and the user’s `autoPlayAudio` preference from the store to optionally auto-start audio.
 
 ### Diagnostics & system tests
 

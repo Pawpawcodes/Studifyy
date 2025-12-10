@@ -1,16 +1,13 @@
 // RUN WITH:
 // npx ts-node testSupabaseConnection.ts
 
-import { supabase } from './supabaseClientNode';  // FIXED IMPORT
+import { supabase } from "./supabaseClientNode"; // FIXED IMPORT
 
 async function testNodeConnection() {
   console.log("🔍 Testing Supabase (Node) Connection...");
 
   try {
-    const { data, error } = await supabase
-      .from('uploads')
-      .select('*')
-      .limit(1);
+    const { data, error } = await supabase.from("uploads").select("*").limit(1);
 
     if (error) {
       console.error("❌ Node Connection Failed:");

@@ -1,8 +1,5 @@
 {
   "name": "Studify",
   "description": "An AI-powered multi-agent study assistant that personalizes learning with RAG, quizzes, flashcards, and planning.",
-  "requestFramePermissions": [
-    "camera",
-    "microphone"
-  ]
+  "requestFramePermissions": ["camera", "microphone"]
 }

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { supabase } from '../supabaseClientFrontend';
+import { useEffect, useState } from "react";
+import { supabase } from "../supabaseClientFrontend";
 
 export function AuthBar() {
   const [user, setUser] = useState<any>(null);
@@ -26,10 +26,7 @@ export function AuthBar() {
       <span className="text-sm">
         Hi, {user.user_metadata?.full_name || user.email}
       </span>
-      <button 
-        onClick={signOut} 
-        className="px-3 py-1 rounded-lg border"
-      >
+      <button onClick={signOut} className="px-3 py-1 rounded-lg border">
         Logout
       </button>
     </div>

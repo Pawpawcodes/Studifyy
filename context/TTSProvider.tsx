@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState } from 'react';
-import { generateTTS } from '../services/geminiService';
-import { useAudio } from './AudioContext';
+import React, { createContext, useContext, useState } from "react";
+import { generateTTS } from "../services/geminiService";
+import { useAudio } from "./AudioContext";
 
 interface TTSContextType {
   play: (text: string) => Promise<void>;
@@ -12,7 +12,9 @@ interface TTSContextType {
 
 const TTSContext = createContext<TTSContextType | undefined>(undefined);
 
-export const TTSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const TTSProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const { play: playAudio, stop: stopAudio } = useAudio();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,13 +31,13 @@ export const TTSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const res = await generateTTS(trimmed);
       if (res.url) {
-        await playAudio('global-tts', res.url);
+        await playAudio("global-tts", res.url);
       } else {
-        setError('No audio returned from TTS');
+        setError("No audio returned from TTS");
       }
     } catch (e: any) {
-      console.error('Global TTS play error', e);
-      setError(e?.message || 'TTS failed');
+      console.error("Global TTS play error", e);
+      setError(e?.message || "TTS failed");
     } finally {
       setLoading(false);
     }
@@ -55,16 +57,16 @@ export const TTSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
 export const useTTS = () => {
   const ctx = useContext(TTSContext);
-  if (!ctx) throw new Error('useTTS must be used within a TTSProvider');
+  if (!ctx) throw new Error("useTTS must be used within a TTSProvider");
   return ctx;
 };
 
 // Optional simple button component to trigger TTS
-export const TTSButton: React.FC<{ text: string; label?: string; className?: string }> = ({
-  text,
-  label = 'Listen',
-  className = '',
-}) => {
+export const TTSButton: React.FC<{
+  text: string;
+  label?: string;
+  className?: string;
+}> = ({ text, label = "Listen", className = "" }) => {
   const { play, loading } = useTTS();
 
   return (
@@ -74,7 +76,7 @@ export const TTSButton: React.FC<{ text: string; label?: string; className?: str
       disabled={loading || !text}
       className={className}
     >
-      {loading ? '...' : label}
+      {loading ? "..." : label}
     </button>
   );
 };

@@ -1,14 +1,14 @@
-import React from 'react';
-import { ArrowRight, Brain, Zap, Layers } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { TTSPlayer } from '../components/TTSPlayer';
+import React from "react";
+import { ArrowRight, Brain, Zap, Layers } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { TTSPlayer } from "../components/TTSPlayer";
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
 
   // Main CTA: send the user into the auth flow
   const handleGetStarted = () => {
-    navigate('/login');
+    navigate("/login");
   };
 
   return (
@@ -20,9 +20,14 @@ export const LandingPage: React.FC = () => {
             alt="Studify logo"
             className="w-10 h-10 object-contain"
           />
-          <span className="text-2xl font-bold text-slate-900 tracking-tight">Studify</span>
+          <span className="text-2xl font-bold text-slate-900 tracking-tight">
+            Studify
+          </span>
         </div>
-        <button onClick={handleGetStarted} className="text-sm font-semibold text-slate-600 hover:text-primary">
+        <button
+          onClick={handleGetStarted}
+          className="text-sm font-semibold text-slate-600 hover:text-primary"
+        >
           Log In
         </button>
       </nav>
@@ -30,19 +35,23 @@ export const LandingPage: React.FC = () => {
       <main className="flex-1 flex flex-col items-center justify-center text-center px-4">
         <div className="bg-sky-50 text-sky-700 px-4 py-1.5 rounded-full text-sm font-bold mb-6 flex items-center space-x-2">
           <span>v2.0 with Gemini 2.5 is here</span>
-          <TTSPlayer text="Welcome to Studify version 2.0. Not just smart, multi-smart." simple={true} />
+          <TTSPlayer
+            text="Welcome to Studify version 2.0. Not just smart, multi-smart."
+            simple={true}
+          />
         </div>
         <h1 className="text-5xl md:text-7xl font-bold text-slate-900 mb-6 tracking-tight">
-          Not just smart, <br/>
+          Not just smart, <br />
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">
             multi-smart.
           </span>
         </h1>
         <p className="text-xl text-slate-500 max-w-2xl mb-10 leading-relaxed">
-          The all-in-one AI tutor that explains topics, solves doubts from your PDFs, generates quizzes, and plans your study schedule.
+          The all-in-one AI tutor that explains topics, solves doubts from your
+          PDFs, generates quizzes, and plans your study schedule.
         </p>
-        
-        <button 
+
+        <button
           onClick={handleGetStarted}
           className="group bg-primary text-white px-8 py-4 rounded-full text-lg font-bold shadow-lg hover:shadow-xl hover:bg-sky-600 transition-all flex items-center"
         >
@@ -56,21 +65,30 @@ export const LandingPage: React.FC = () => {
               <Brain size={24} />
             </div>
             <h3 className="font-bold text-lg mb-2">Concept Explainer</h3>
-            <p className="text-slate-500">Understand complex topics with simple, personalized analogies adapted to your level.</p>
+            <p className="text-slate-500">
+              Understand complex topics with simple, personalized analogies
+              adapted to your level.
+            </p>
           </div>
           <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100">
             <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center text-green-600 mb-4">
               <Zap size={24} />
             </div>
             <h3 className="font-bold text-lg mb-2">Instant Doubt Solving</h3>
-            <p className="text-slate-500">Upload a photo or PDF of your textbook and get instant answers sourced from your material.</p>
+            <p className="text-slate-500">
+              Upload a photo or PDF of your textbook and get instant answers
+              sourced from your material.
+            </p>
           </div>
           <div className="p-6 bg-white rounded-2xl shadow-sm border border-slate-100">
             <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center text-purple-600 mb-4">
               <Layers size={24} />
             </div>
             <h3 className="font-bold text-lg mb-2">Smart Quizzes</h3>
-            <p className="text-slate-500">Auto-generated quizzes that adapt to your performance to strengthen weak areas.</p>
+            <p className="text-slate-500">
+              Auto-generated quizzes that adapt to your performance to
+              strengthen weak areas.
+            </p>
           </div>
         </div>
       </main>

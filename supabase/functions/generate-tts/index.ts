@@ -5,7 +5,8 @@ declare const Deno: any;
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -26,9 +27,10 @@ serve(async (req: Request) => {
     const apiKey = Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
 
-    // NEW WORKING TTS MODEL
+    // NEW CORRECT MODEL
     const url =
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+      `https://generativelanguage.googleapis.com/v1beta/models/` +
+      `gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
 
     const res = await fetch(url, {
       method: "POST",
@@ -43,31 +45,25 @@ serve(async (req: Request) => {
       }),
     });
 
-    const json = await res.json();
+    const data = await res.json();
 
-    // Extract inlineData (Base64 + MIME)
-    const audioPart =
-      json?.candidates?.[0]?.content?.parts?.[0]?.inlineData;
-
-    if (!audioPart?.data) {
-      console.log("TTS DEBUG RESPONSE:", JSON.stringify(json));
-      throw new Error("TTS: No inline audio returned");
+    const inline =
+      data?.response?.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+    if (!inline?.data) {
+      throw new Error("TTS returned no audio");
     }
 
-    // Return simpler format for frontend
     return new Response(
       JSON.stringify({
-        audio: audioPart.data, // base64 string
-        mimeType: audioPart.mimeType || "audio/mp3",
+        audio: inline.data, // base64 string
+        mimeType: inline.mimeType ?? "audio/mp3",
       }),
-      {
-        headers: { ...cors, "Content-Type": "application/json" },
-      }
+      { headers: { ...cors, "Content-Type": "application/json" } },
     );
-  } catch (err: any) {
-    return new Response(
-      JSON.stringify({ error: err.message }),
-      { status: 500, headers: cors },
-    );
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: cors,
+    });
   }
 });

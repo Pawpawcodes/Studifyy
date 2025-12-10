@@ -1,5 +1,13 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { AppState, UserProfile, UploadedFile, Quiz, Flashcard, StudyPlanDay, EducationLevel } from '../types';
+import React, { createContext, useContext, useState, useEffect } from "react";
+import {
+  AppState,
+  UserProfile,
+  UploadedFile,
+  Quiz,
+  Flashcard,
+  StudyPlanDay,
+  EducationLevel,
+} from "../types";
 
 interface StoreContextType extends AppState {
   updateUser: (user: Partial<UserProfile>) => void;
@@ -18,15 +26,15 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 const INITIAL_STATE: AppState = {
   session: null,
   user: {
-    name: 'Student',
+    name: "Student",
     level: EducationLevel.CLASS_12,
     subjects: [],
-    weakTopics: ['Physics', 'Integration'],
-    strongTopics: ['Biology'],
+    weakTopics: ["Physics", "Integration"],
+    strongTopics: ["Biology"],
     streak: 3,
     studyHoursPerDay: 2,
     autoPlayAudio: false,
-    performanceHistory: {}
+    performanceHistory: {},
   },
   files: [],
   flashcards: [],
@@ -35,45 +43,50 @@ const INITIAL_STATE: AppState = {
   onboardingComplete: false,
 };
 
-export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [state, setState] = useState<AppState>(() => {
-    const local = localStorage.getItem('studify_state');
+    const local = localStorage.getItem("studify_state");
     return local ? JSON.parse(local) : INITIAL_STATE;
   });
 
   useEffect(() => {
-    localStorage.setItem('studify_state', JSON.stringify(state));
+    localStorage.setItem("studify_state", JSON.stringify(state));
   }, [state]);
 
   const updateUser = (updates: Partial<UserProfile>) => {
-    setState(prev => ({ ...prev, user: { ...prev.user!, ...updates } }));
+    setState((prev) => ({ ...prev, user: { ...prev.user!, ...updates } }));
   };
-  
+
   const toggleAutoPlay = () => {
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
-      user: { ...prev.user!, autoPlayAudio: !prev.user!.autoPlayAudio }
+      user: { ...prev.user!, autoPlayAudio: !prev.user!.autoPlayAudio },
     }));
   };
 
   const addFile = (file: UploadedFile) => {
-    setState(prev => ({ ...prev, files: [...prev.files, file] }));
+    setState((prev) => ({ ...prev, files: [...prev.files, file] }));
   };
 
   const addQuiz = (quiz: Quiz) => {
-    setState(prev => ({ ...prev, quizzes: [quiz, ...prev.quizzes] }));
+    setState((prev) => ({ ...prev, quizzes: [quiz, ...prev.quizzes] }));
   };
 
   const addFlashcards = (cards: Flashcard[]) => {
-    setState(prev => ({ ...prev, flashcards: [...prev.flashcards, ...cards] }));
+    setState((prev) => ({
+      ...prev,
+      flashcards: [...prev.flashcards, ...cards],
+    }));
   };
 
   const setPlan = (plan: StudyPlanDay[]) => {
-    setState(prev => ({ ...prev, plans: plan }));
+    setState((prev) => ({ ...prev, plans: plan }));
   };
 
   const completeOnboarding = () => {
-    setState(prev => ({ ...prev, onboardingComplete: true }));
+    setState((prev) => ({ ...prev, onboardingComplete: true }));
   };
 
   const resetData = () => {
@@ -81,23 +94,26 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const recordPerformance = (topic: string, scorePercentage: number) => {
-    setState(prev => {
+    setState((prev) => {
       const user = prev.user!;
       const history = user.performanceHistory || {};
       const current = history[topic] || { totalScore: 0, attempts: 0 };
-      
+
       const newTotal = current.totalScore + scorePercentage;
       const newAttempts = current.attempts + 1;
       const newAvg = newTotal / newAttempts;
-      
-      const newHistory = { ...history, [topic]: { totalScore: newTotal, attempts: newAttempts } };
-      
+
+      const newHistory = {
+        ...history,
+        [topic]: { totalScore: newTotal, attempts: newAttempts },
+      };
+
       // Dynamic Memory Update Logic
       // < 60% = Weak
       // > 80% = Strong
       const weak = new Set(user.weakTopics);
       const strong = new Set(user.strongTopics);
-      
+
       if (newAvg < 60) {
         weak.add(topic);
         strong.delete(topic);
@@ -109,32 +125,34 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         weak.delete(topic);
         strong.delete(topic);
       }
-      
+
       return {
         ...prev,
         user: {
           ...user,
           performanceHistory: newHistory,
           weakTopics: Array.from(weak),
-          strongTopics: Array.from(strong)
-        }
+          strongTopics: Array.from(strong),
+        },
       };
     });
   };
 
   return (
-    <StoreContext.Provider value={{
-      ...state,
-      updateUser,
-      toggleAutoPlay,
-      addFile,
-      addQuiz,
-      addFlashcards,
-      setPlan,
-      completeOnboarding,
-      resetData,
-      recordPerformance
-    }}>
+    <StoreContext.Provider
+      value={{
+        ...state,
+        updateUser,
+        toggleAutoPlay,
+        addFile,
+        addQuiz,
+        addFlashcards,
+        setPlan,
+        completeOnboarding,
+        resetData,
+        recordPerformance,
+      }}
+    >
       {children}
     </StoreContext.Provider>
   );

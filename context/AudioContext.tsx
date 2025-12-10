@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useRef, useState, useEffect } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useRef,
+  useState,
+  useEffect,
+} from "react";
 
 interface AudioContextType {
   play: (id: string, url: string) => Promise<void>;
@@ -11,7 +17,9 @@ interface AudioContextType {
 
 const AudioContext = createContext<AudioContextType | undefined>(undefined);
 
-export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -31,15 +39,15 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // This helps when manually pausing vs system interruptions
       setIsPlaying(false);
     };
-    
-    audio.addEventListener('ended', handleEnded);
-    audio.addEventListener('pause', handlePause);
-    
+
+    audio.addEventListener("ended", handleEnded);
+    audio.addEventListener("pause", handlePause);
+
     return () => {
-      audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('pause', handlePause);
+      audio.removeEventListener("ended", handleEnded);
+      audio.removeEventListener("pause", handlePause);
       audio.pause();
-      audio.src = '';
+      audio.src = "";
     };
   }, []);
 
@@ -67,11 +75,11 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     // Different ID: Stop previous, start new
-    stop(); 
-    
+    stop();
+
     setCurrentId(id);
     audioRef.current.src = url;
-    
+
     try {
       await audioRef.current.play();
       setIsPlaying(true);
@@ -91,13 +99,15 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const resume = () => {
     if (audioRef.current && currentId) {
-      audioRef.current.play().catch(e => console.error(e));
+      audioRef.current.play().catch((e) => console.error(e));
       setIsPlaying(true);
     }
   };
 
   return (
-    <AudioContext.Provider value={{ play, pause, resume, stop, currentId, isPlaying }}>
+    <AudioContext.Provider
+      value={{ play, pause, resume, stop, currentId, isPlaying }}
+    >
       {children}
     </AudioContext.Provider>
   );

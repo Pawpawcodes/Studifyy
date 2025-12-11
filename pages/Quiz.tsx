@@ -24,6 +24,10 @@ export const QuizPage: React.FC = () => {
       // Simulate difficulty tracking
       const quizData = await generateQuiz(topic, "Medium");
       setQuestions(quizData);
+      if (!quizData || quizData.length === 0) {
+        alert("No quiz questions were generated. Please try again later.");
+        return;
+      }
 
       if (quizData && quizData.length > 0 && quizData[0].question) {
         // Read the first question aloud when quiz starts
@@ -37,8 +41,21 @@ export const QuizPage: React.FC = () => {
     } catch (e: any) {
       if (e?.message === "QUOTA_EXCEEDED") {
         alert(
-          "Free tier quota for AI generation is exceeded right now. Please try again later or reduce requests."
+          "Free tier quota for AI generation is exceeded right now. Showing a basic offline quiz instead."
         );
+        // Local fallback so UI still proceeds
+        const sample: QuizQuestion[] = Array.from({ length: 5 }).map((_, i) => ({
+          id: `q-${Date.now()}-${i}`,
+          question: `(Medium) ${topic}: Sample question ${i + 1}?`,
+          options: ["Option A", "Option B", "Option C", "Option D"],
+          correctIndex: i % 4,
+          explanation: `Explanation for ${topic} question ${i + 1}.`,
+        }));
+        setQuestions(sample);
+        setCurrentQIndex(0);
+        setScore(0);
+        setShowResult(false);
+        setSelectedOption(null);
       } else {
         console.error(e);
         alert("Unable to generate quiz. Please try again later.");

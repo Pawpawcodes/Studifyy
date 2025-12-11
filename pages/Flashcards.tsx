@@ -20,6 +20,10 @@ export const FlashcardsPage: React.FC = () => {
     setGenerating(true);
     try {
       const newCards = await generateFlashcards(topicInput);
+      if (!newCards || newCards.length === 0) {
+        alert("No flashcards were generated. Please try again later.");
+        return;
+      }
       addFlashcards(newCards);
 
       if (newCards && newCards.length > 0 && newCards[0].front) {

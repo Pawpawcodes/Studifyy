@@ -14,7 +14,16 @@ import {
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 if (!apiKey) console.error("❌ Missing VITE_GEMINI_API_KEY");
 
-const genAI = new GoogleGenerativeAI(apiKey);
+// Guard Gemini client initialization to avoid runtime failures when key is missing
+let genAI: GoogleGenerativeAI | null = null;
+try {
+  if (apiKey) {
+    genAI = new GoogleGenerativeAI(apiKey);
+  }
+} catch (e) {
+  console.error("Failed to initialize GoogleGenerativeAI:", e);
+  genAI = null;
+}
 
 // Derive Functions URL
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
@@ -154,6 +163,18 @@ Return ONLY JSON.
 `;
 
   try {
+    if (!genAI) {
+      // Fallback: generate a simple local quiz when API key is not configured
+      const sample: QuizQuestion[] = Array.from({ length: 5 }).map((_, i) => ({
+        id: `q-${Date.now()}-${i}`,
+        question: `(${difficulty}) ${topic}: Sample question ${i + 1}?`,
+        options: ["Option A", "Option B", "Option C", "Option D"],
+        correctIndex: i % 4,
+        explanation: `Explanation for ${topic} question ${i + 1}.`,
+      }));
+      return sample;
+    }
+
     const model = genAI.getGenerativeModel({ model: MODEL_FAST });
     const result = await model.generateContent({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -177,6 +198,20 @@ Return ONLY JSON.
 `;
 
   try {
+    if (!genAI) {
+      // Fallback: generate simple local flashcards
+      const now = new Date().toISOString();
+      const cards: Flashcard[] = Array.from({ length: count }).map((_, i) => ({
+        id: `fc-${Date.now()}-${i}`,
+        front: `${topic}: Question ${i + 1}`,
+        back: `${topic}: Answer ${i + 1}`,
+        topic,
+        nextReview: now,
+        difficulty: 0,
+      }));
+      return cards;
+    }
+
     const model = genAI.getGenerativeModel({ model: MODEL_FAST });
     const result = await model.generateContent({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -208,6 +243,29 @@ Return ONLY JSON.
 `;
 
   try {
+    if (!genAI) {
+      // Fallback: generate a simple local 7-day plan
+      const days = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+      ];
+      const plan: StudyPlanDay[] = days.map((day, i) => ({
+        day,
+        focusTopic: focus,
+        tasks: [
+          `Study ${focus} for ${user.studyHoursPerDay || 1} hour(s)`,
+          `Practice 5 questions on ${focus}`,
+          "Review notes",
+        ],
+      }));
+      return plan;
+    }
+
     const model = genAI.getGenerativeModel({ model: MODEL_FAST });
     const result = await model.generateContent({
       contents: [{ role: "user", parts: [{ text: prompt }] }],

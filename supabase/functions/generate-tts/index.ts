@@ -18,70 +18,68 @@ serve(async (req: Request) => {
   try {
     const { text } = await req.json();
     if (!text) {
-      return new Response(
-        JSON.stringify({ error: "Missing text" }),
-        { status: 400, headers: cors }
-      );
+      return new Response(JSON.stringify({ error: "Missing text" }), {
+        status: 400,
+        headers: cors,
+      });
     }
 
     const apiKey = Deno.env.get("GEMINI_API_KEY");
-    if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
+    if (!apiKey) {
+      throw new Error("Missing GEMINI_API_KEY");
+    }
 
-    // CORRECT TTS MODEL
     const url =
       `https://generativelanguage.googleapis.com/v1beta/models/` +
       `gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
 
-    console.log("Calling Gemini TTS with text:", text);
+    const body = {
+      contents: [
+        {
+          role: "user",
+          parts: [{ text }],
+        },
+      ],
+      generationConfig: {
+        responseModalities: ["AUDIO"],
+        audioFormat: "mp3",
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName: "Charon" }
+        }
+      }
+    };
+
+    console.log("Sending to Gemini:", JSON.stringify(body));
 
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [{ text }],
-          },
-        ],
-        generationConfig: {
-          responseModalities: ["AUDIO"],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: {
-                voiceName: "Kore",
-              },
-            },
-          },
-        },
-      }),
+      body: JSON.stringify(body),
     });
 
     const data = await res.json();
-    console.log("Gemini Response:", JSON.stringify(data));
 
-    // Some Gemini endpoints return { response: { candidates: [...] } }
-    // and others return { candidates: [...] } at the top level.
+    console.log("Gemini response:", JSON.stringify(data));
+
     const inline =
-      data?.response?.candidates?.[0]?.content?.parts?.[0]?.inlineData ??
       data?.candidates?.[0]?.content?.parts?.[0]?.inlineData;
 
     if (!inline?.data) {
-      throw new Error("Gemini did not return audio inlineData");
+      throw new Error("Gemini did not return audio");
     }
+
     return new Response(
       JSON.stringify({
         audio: inline.data,
-        mimeType: inline.mimeType ?? "audio/mp3",
+        mimeType: inline.mimeType || "audio/mp3",
       }),
       { headers: { ...cors, "Content-Type": "application/json" } }
     );
-
   } catch (err) {
     console.error("TTS Error:", err);
-    return new Response(
-      JSON.stringify({ error: err.message }),
-      { status: 500, headers: cors }
-    );
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: cors,
+    });
   }
 });

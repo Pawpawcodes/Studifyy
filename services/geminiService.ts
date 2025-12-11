@@ -42,9 +42,9 @@ if (supabaseUrl) {
   }
 }
 
-// GEMINI MODELS
-const MODEL_FAST = "gemini-2.5-flash";
-const MODEL_REASONING = "gemini-2.5-flash";
+// GEMINI MODELS (use free-tier friendly variants)
+const MODEL_FAST = "gemini-1.5-flash"; // or "gemini-1.5-flash-8b" if needed
+const MODEL_REASONING = "gemini-1.5-flash";
 
 // ---------------------------------------------------------
 // FILE HANDLING
@@ -58,6 +58,20 @@ function prepareFiles(files: UploadedFile[]) {
         mimeType: f.mimeType!,
       },
     }));
+}
+
+// ---------------------------------------------------------
+// ERROR HELPERS
+// ---------------------------------------------------------
+function isQuotaExceeded(err: any) {
+  const msg = String(err?.message || err || "").toLowerCase();
+  // Check common signals: HTTP 429 or quota keywords
+  return (
+    msg.includes("429") ||
+    msg.includes("quota") ||
+    msg.includes("rate limit") ||
+    String(err?.status).includes("429")
+  );
 }
 
 // ---------------------------------------------------------
@@ -184,6 +198,9 @@ Return ONLY JSON.
     return JSON.parse(result.response.text());
   } catch (err) {
     console.error("QUIZ ERROR:", err);
+    if (isQuotaExceeded(err)) {
+      throw new Error("QUOTA_EXCEEDED");
+    }
     return [];
   }
 }
@@ -225,6 +242,9 @@ Return ONLY JSON.
       nextReview: new Date().toISOString(),
     }));
   } catch (err) {
+    if (isQuotaExceeded(err)) {
+      throw new Error("QUOTA_EXCEEDED");
+    }
     return [];
   }
 }
@@ -274,6 +294,9 @@ Return ONLY JSON.
 
     return JSON.parse(result.response.text());
   } catch (err) {
+    if (isQuotaExceeded(err)) {
+      throw new Error("QUOTA_EXCEEDED");
+    }
     return [];
   }
 }

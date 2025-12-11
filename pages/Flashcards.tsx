@@ -18,16 +18,28 @@ export const FlashcardsPage: React.FC = () => {
   const handleGenerate = async () => {
     if (!topicInput) return;
     setGenerating(true);
-    const newCards = await generateFlashcards(topicInput);
-    addFlashcards(newCards);
+    try {
+      const newCards = await generateFlashcards(topicInput);
+      addFlashcards(newCards);
 
-    if (newCards && newCards.length > 0 && newCards[0].front) {
-      // Read the first generated question aloud
-      play(newCards[0].front);
+      if (newCards && newCards.length > 0 && newCards[0].front) {
+        // Read the first generated question aloud
+        play(newCards[0].front);
+      }
+
+      setTopicInput("");
+    } catch (e: any) {
+      if (e?.message === "QUOTA_EXCEEDED") {
+        alert(
+          "Free tier quota for AI generation is exceeded right now. Please try again later or reduce requests."
+        );
+      } else {
+        console.error(e);
+        alert("Unable to generate flashcards. Please try again later.");
+      }
+    } finally {
+      setGenerating(false);
     }
-
-    setGenerating(false);
-    setTopicInput("");
   };
 
   const handleNext = (score: number, topic: string) => {

@@ -20,20 +20,32 @@ export const QuizPage: React.FC = () => {
   const handleStartQuiz = async () => {
     if (!topic) return;
     setLoading(true);
-    // Simulate difficulty tracking
-    const quizData = await generateQuiz(topic, "Medium");
-    setQuestions(quizData);
+    try {
+      // Simulate difficulty tracking
+      const quizData = await generateQuiz(topic, "Medium");
+      setQuestions(quizData);
 
-    if (quizData && quizData.length > 0 && quizData[0].question) {
-      // Read the first question aloud when quiz starts
-      play(quizData[0].question);
+      if (quizData && quizData.length > 0 && quizData[0].question) {
+        // Read the first question aloud when quiz starts
+        play(quizData[0].question);
+      }
+
+      setCurrentQIndex(0);
+      setScore(0);
+      setShowResult(false);
+      setSelectedOption(null);
+    } catch (e: any) {
+      if (e?.message === "QUOTA_EXCEEDED") {
+        alert(
+          "Free tier quota for AI generation is exceeded right now. Please try again later or reduce requests."
+        );
+      } else {
+        console.error(e);
+        alert("Unable to generate quiz. Please try again later.");
+      }
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
-    setCurrentQIndex(0);
-    setScore(0);
-    setShowResult(false);
-    setSelectedOption(null);
   };
 
   const handleAnswer = (index: number) => {

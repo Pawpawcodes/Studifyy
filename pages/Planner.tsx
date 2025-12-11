@@ -11,10 +11,22 @@ export const PlannerPage: React.FC = () => {
   const handleCreatePlan = async () => {
     if (!user) return;
     setGenerating(true);
-    const focus = user.weakTopics[0] || "General Revision";
-    const newPlan = await generateStudyPlan(user, focus);
-    setPlan(newPlan);
-    setGenerating(false);
+    try {
+      const focus = user.weakTopics[0] || "General Revision";
+      const newPlan = await generateStudyPlan(user, focus);
+      setPlan(newPlan);
+    } catch (e: any) {
+      if (e?.message === "QUOTA_EXCEEDED") {
+        alert(
+          "Free tier quota for AI generation is exceeded right now. Please try again later or reduce requests."
+        );
+      } else {
+        console.error(e);
+        alert("Unable to generate study plan. Please try again later.");
+      }
+    } finally {
+      setGenerating(false);
+    }
   };
 
   useEffect(() => {
